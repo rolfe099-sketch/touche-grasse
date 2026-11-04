@@ -43,11 +43,11 @@ test('barcode fallback clears stale product guidance and leaves drafts intact', 
   await page.goto('/entry'); await page.getByTestId('quick-text').fill('10g olive oil');
   await page.getByRole('button', { name: 'Scan a barcode', exact: true }).click();
   await page.getByRole('textbox', { name: 'Barcode', exact: true }).fill('1234567890123');
-  await page.getByRole('button', { name: 'Find saved product', exact: true }).click();
+  await page.getByRole('button', { name: 'Find product', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Add this product', exact: true })).toBeVisible();
   await page.getByRole('textbox', { name: 'Barcode', exact: true }).fill('123');
   await expect(page.getByRole('button', { name: 'Add this product', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Find saved product', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Find product', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Type a meal', exact: true }).click();
   await expect(page.getByTestId('quick-text')).toHaveValue('10g olive oil');
   await expect(page.getByTestId('commit-food')).toBeEnabled();

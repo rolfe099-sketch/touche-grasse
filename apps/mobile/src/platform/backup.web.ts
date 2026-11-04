@@ -1,7 +1,12 @@
 export async function exportBackup(json: string) {
   const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
   const link = document.createElement('a'); link.href = url; link.download = 'ToucheGrasse-backup.json';
-  document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  try { document.body.appendChild(link); link.click(); }
+  catch (error) { URL.revokeObjectURL(url); throw error; }
+  finally { link.remove(); }
+  // Slow browser downloads may not have consumed the blob after one second.
+  // Keep it alive briefly; the document also releases object URLs on unload.
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 export function pickBackup(): Promise<string | null> {
   return new Promise((resolve, reject) => {

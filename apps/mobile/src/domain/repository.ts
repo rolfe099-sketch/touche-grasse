@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { Change, put, StorageAdapter } from '../storage/contract';
-import { D, dayKey, Draft, draftSchema, duplicateRecipe, emptyDraft, Food, foodSchema, IdFactory, lineIngredient, LogEntry, logSchema, Meal, Recipe, recipePortion, recipeSchema, recipeTotal, snapshotNutrition, structuredCopy, validateFood, nutrients, profileSchema, recipeDraftSchema, Unit, PreparedBatch, preparedBatchSchema } from './model';
+import { D, dayKey, Draft, draftSchema, duplicateRecipe, emptyDraft, Food, foodSchema, foodNutrition, IdFactory, lineIngredient, LogEntry, logSchema, Meal, Recipe, recipePortion, recipeSchema, recipeTotal, snapshotNutrition, structuredCopy, validateFood, nutrients, profileSchema, recipeDraftSchema, Unit, PreparedBatch, preparedBatchSchema } from './model';
 import { assertBatchCapacity, validateBatch, portionFits } from './portions';
 import { FoodIndex, normalize } from './search';
 import { emptyPreferences, liveTextIsCurrent, quickEntrySchema, QuickEntryPreferences } from './quickEntry';
 import { TargetChange, targetChangeSchema, TargetValues, targetValuesSchema } from './targets';
+import { sameBarcode } from './barcode';
 
 const archiveSchema = z.object({ format: z.literal('touche-grasse'), version: z.literal(2), foods: z.array(foodSchema).max(20000), logs: z.array(logSchema).max(100000), recipes: z.array(recipeSchema).max(10000), draft: draftSchema, profile: profileSchema.optional(), recipeDrafts: z.record(z.string(), recipeDraftSchema).optional(), quickEntry: quickEntrySchema.optional(), preparedBatches: z.array(preparedBatchSchema).max(20000).optional(), targets: z.array(targetChangeSchema).max(20000).optional() });
 function utf8Size(value: string) {
@@ -95,17 +96,30 @@ export class Repository {
       map.set(food.barcode, food.id);
     }
   }
-  saveFood(input: Food) {
+  saveFood(input: Food, inputDraft?: Draft) {
     const food = validateFood(structuredCopy(input));
+    const draft = inputDraft ? draftSchema.parse(structuredCopy(inputDraft)) : undefined;
     return this.serialized(async () => {
       const foods = [...this.foods.filter(f => f.id !== food.id), food]; this.checkBarcodes(foods);
-      await this.commit([put('food', food.id, food)]);
-      this.foods = foods; this.sortAndIndex();
+      await this.commit([put('food', food.id, food), ...(draft ? [put('draft', 'active', draft)] : [])]);
+      this.foods = foods; if (draft) this.draft = draft; this.sortAndIndex();
     });
   }
   saveDraft(input: Draft) {
     const draft = draftSchema.parse(structuredCopy(input));
     return this.serialized(async () => { await this.commit([put('draft', 'active', draft)]); this.draft = draft; });
+  }
+  addBarcodeFood(input: Food, inputDraft: Draft, amount = '100') {
+    const food = validateFood(structuredCopy(input));
+    foodNutrition(food, amount, food.referenceUnit);
+    const draft = draftSchema.parse({ ...structuredCopy(inputDraft), lines: [...inputDraft.lines, { id: this.id(), query: food.name, food, quantityText: amount, unit: food.referenceUnit }] });
+    return this.serialized(async () => {
+      const unchangedBarcode = this.foods.some(item => item.id === food.id && item.barcode === food.barcode);
+      if (!unchangedBarcode && food.barcode && this.foods.some(item => item.id !== food.id && item.barcode && sameBarcode(item.barcode, food.barcode!))) throw new Error('This barcode is already linked to a saved food. Scan it again to use your saved record.');
+      const foods = [...this.foods.filter(item => item.id !== food.id), food]; this.checkBarcodes(foods);
+      await this.commit([put('food', food.id, food), put('draft', 'active', draft)]);
+      this.foods = foods; this.draft = draft; this.sortAndIndex();
+    });
   }
   saveTargets(input: TargetValues, at = new Date()) {
     const values = targetValuesSchema.parse(structuredCopy(input));
@@ -292,7 +306,7 @@ export class Repository {
     if (utf8Size(json) > 50_000_000) throw new Error('This backup exceeds 50 MB. Remove or reduce recipe photos before exporting.');
     return json;
   }
-  restoreJSON(json: string) {
+  restoreJSON(json: string, options: { recoverMissing?: boolean } = {}) {
     if (json.length > 50_000_000 || utf8Size(json) > 50_000_000) throw new Error('This backup is too large.');
     const backup = archiveSchema.parse(JSON.parse(json));
     (backup.preparedBatches ?? []).forEach(validateBatch);
@@ -307,8 +321,8 @@ export class Repository {
     for (const items of [backup.foods, backup.logs, backup.recipes, backup.preparedBatches ?? [], backup.targets ?? []]) if (new Set(items.map(i => i.id)).size !== items.length) throw new Error('The backup contains duplicate identities.');
     return this.serialized(async () => {
       const merge = <T extends { id: string }>(a: T[], b: T[]) => [...new Map([...a, ...b].map(value => [value.id, value])).values()];
-      const foods = merge(this.foods, backup.foods); this.checkBarcodes(foods);
-      const recipes = merge(this.recipes, backup.recipes);
+      const foods = options.recoverMissing ? merge(backup.foods, this.foods) : merge(this.foods, backup.foods); this.checkBarcodes(foods);
+      const recipes = options.recoverMissing ? merge(backup.recipes, this.recipes) : merge(this.recipes, backup.recipes);
       // Existing historical entries win, regardless of what the incoming archive says.
       const logs = merge(backup.logs, this.logs);
       const preparedBatches = merge(backup.preparedBatches ?? [], this.preparedBatches);
@@ -319,7 +333,7 @@ export class Repository {
       const draft = this.draft.lines.length || this.draft.text || this.draft.recipeName || this.draft.splitPlan ? this.draft : backup.draft;
       const recipeDrafts = { ...backup.recipeDrafts, ...this.recipeDrafts };
       const matches = { ...backup.quickEntry?.matches };
-      for (const [query, match] of Object.entries(this.quickEntry.matches)) if (!matches[query] || matches[query].confirmedAt <= match.confirmedAt) matches[query] = match;
+      for (const [query, match] of Object.entries(this.quickEntry.matches)) if (options.recoverMissing || !matches[query] || matches[query].confirmedAt <= match.confirmedAt) matches[query] = match;
       const preferences = quickEntrySchema.parse({ entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
       const clearingDeletion = this.isDeletionUndo;
       await this.commit([...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : []), ...(clearingDeletion ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);

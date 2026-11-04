@@ -3,9 +3,9 @@
 The focus is fast, trustworthy logging. This list is direction, not a release promise.
 
 1. Validate physical iPhones: keyboard, safe areas, storage, speech permissions, camera and sharing.
-2. Add reviewed remote barcode lookup with provenance, caching and data-license handling.
+2. Expand Norwegian packaged-product coverage and add reviewed label OCR. Remote barcode lookup, source/license provenance, package review and saved-product caching are implemented; real camera acceptance is pending.
 3. Improve English/Norwegian ingredient coverage with explicit preparation and product ambiguity.
-4. Strengthen accessibility, error recovery, backup portability and upgrade testing.
+4. Strengthen accessibility, backup portability and upgrade testing. Automatic local recovery copies are implemented; native sharing/recovery acceptance remains pending. Optional cloud sync requires a separate design.
 5. Investigate optional body-weight trends and useful target feedback without guessing missing intake.
 6. Prepare signed releases and install/update instructions after native validation.
 

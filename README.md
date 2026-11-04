@@ -22,6 +22,8 @@ Actual implementation screenshots using isolated test meals. This is an early de
 - **Today and History:** one-tap usual meals and saved portions, daily diary, corrections, daily/weekly/monthly/lifetime exploration.
 - **Delete and undo:** visible trash controls for entries and grouped meals. Deletion updates totals and saved-portion inventory; Undo restores exact snapshots and survives reopening. The next log/deletion replaces the single undo action; backup restoration clears a pending deletion undo.
 - **Local persistence:** SQLite on native, IndexedDB in browsers; retained drafts, immutable historical nutrition snapshots, validated JSON backup and merge restore.
+- **Packaged products:** barcode lookup through Open Food Facts, editable label review before saving, explicit g/ml bases, correction provenance and offline reuse of confirmed products. New scans add to the meal draft; they do not log food as eaten.
+- **Recovery copies:** automatic on-device versions stored separately from the active diary, integrity checks, pre-restore copies and a Settings recovery/export flow. Existing historical entries and unfinished meals survive recovery merges.
 - **Unified entry:** typing, voice controls and barcode camera entry share one review. See the runtime limits below.
 
 ## Run locally
@@ -62,17 +64,17 @@ npm run test:e2e
 
 The browser suite tests parsing, corrections, learned matches, persistence, backup restore, targets, historical snapshots, repeat/undo, portions and layout at iPhone dimensions. Tests use isolated browser contexts and synthetic diaries built from the actual catalog. CI also runs the browser export and tests.
 
-Latest local verification (4 November 2026): **141 unit/storage tests, 39 Chromium browser tests and 7 WebKit iPhone-sized tests passed**; one historical baseline-capture test is intentionally skipped. TypeScript, ESLint and iOS JavaScript packaging passed. The owner also confirmed native launch, a real food log, repeat/undo, reopen persistence and entry deletion/undo on an iPhone 13 Pro. Native voice, camera and the remaining device checklist still need physical validation.
+CI checks TypeScript, ESLint, unit/storage tests, web export, Chromium workflows and iPhone-sized WebKit workflows. The owner confirmed native launch, a real food log, repeat/undo, reopen persistence, entry deletion/undo and three-row multi-ingredient speech parsing on an iPhone 13 Pro. Camera, recovery sharing and the remaining [device checklist](docs/IPHONE_TESTING.md) still need physical validation. The optional live barcode smoke is separate from deterministic API-fixture tests.
 
 The exported web app supports an offline reload after its first successful online load. Expo's development server does not install the service worker. Browser data belongs to its origin: different hosts and ports have separate libraries. Export/restore to transfer data, and keep backups before changing origins or clearing browser storage.
 
 ## Current limits
 
 - Physical iPhone behavior, permissions, native speech and camera scanning still require device testing. An internal iOS development build has been produced; it is not an App Store release, and native binaries are not committed to this repository.
-- Barcode matching currently uses previously saved barcodes. Remote product lookup and nutrition-label OCR are not implemented.
+- New barcodes require an internet connection and package review. Open Food Facts coverage and completeness vary; unsupported/prepared-only nutrition falls back to label entry. Nutrition-label OCR is not implemented. [Lookup and recovery details](docs/BARCODES_AND_RECOVERY.md).
 - Voice uses platform/browser speech recognition; availability, processing location and accuracy depend on the runtime. Commands cover implemented meal/recipe operations, not unrestricted assistant behavior.
-- There is no cloud sync. JSON exports can contain personal diary data and photos and are not encrypted by the app.
-- Food data is a dated snapshot, not a live product database. The app does not infer cooking yield or oil absorption.
+- There is no cloud sync. Recovery copies remain on the same device/origin and cannot survive uninstalling or clearing all app/site data. Export elsewhere for that. Copies and JSON exports contain personal data and are not encrypted by the app.
+- The bundled Matvaretabellen catalog is a dated snapshot. Reviewed packaged records stay as confirmed until explicitly replaced; history always retains its snapshots. The app does not infer cooking yield or oil absorption.
 
 ## Repository
 

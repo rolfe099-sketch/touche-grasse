@@ -15,7 +15,8 @@ export const foodSchema = z.object({
   barcode: z.string().regex(/^\d{8,14}$/).nullable().optional(), referenceUnit: z.enum(['g', 'ml']), nutrition: nutritionSchema,
   gramsPerMilliliter: decimalSchema.nullable().optional(), gramsPerMeasure: z.record(z.string(), decimalSchema),
   provenance: z.object({ source: z.enum(['matvaretabellen', 'manual', 'confirmedOCR', 'openFoodFacts']), sourceID: z.string(),
-    sourceURL: z.string().optional(), retrievedAt: z.string(), nutrientSources: z.record(z.string(), z.string()) }),
+    sourceURL: z.string().optional(), retrievedAt: z.string(), nutrientSources: z.record(z.string(), z.string()),
+    license: z.literal('ODbL-1.0').optional(), labelReview: z.object({ confirmedAt: z.iso.datetime(), originalName: z.string().max(300), originalNutrition: nutritionSchema, originalReferenceUnit: z.enum(['g', 'ml']).nullable(), nutritionSource: z.string().max(200) }).optional() }),
 });
 export const ingredientSchema = z.object({ id: z.string(), food: foodSchema, quantity: decimalSchema, unit: unitSchema });
 export const recipeSchema = z.object({

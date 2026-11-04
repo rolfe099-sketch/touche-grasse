@@ -14,6 +14,8 @@ import { Repository } from '../src/domain/repository';
 import { D, emptyDraft, Food, nutrients, Recipe, recipeTotal } from '../src/domain/model';
 import catalogJSON from '../src/data/catalog.json';
 import { emptyTargets, targetOn } from '../src/domain/targets';
+import { confirmBarcodeProduct, parseBarcodeProduct } from '../src/domain/barcode';
+import { milkCode, milkProduct } from './barcode-fixture';
 
 const catalog = catalogJSON as Food[], oil = catalog.find(f => f.id === 'mvt:08.019')!;
 function driver(db: DatabaseSync): SQLDatabase {
@@ -30,6 +32,38 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  it('saves a reviewed barcode and its draft atomically, reopens, logs exact ml nutrition and preserves historical snapshots', async () => {
+    const storage = await adapter(), repo = await setup(storage); await repo.logDraft(draftFor()); const historical = structuredClone(repo.logs);
+    const candidate = parseBarcodeProduct(milkProduct(), milkCode)!;
+    const { food } = confirmBarcodeProduct(candidate, { name: 'TINE milk', referenceUnit: 'ml', amount: '250', nutrition: { kcal: '37', protein: '3.6', carbohydrate: '4.7', fat: '0.5', fiber: '' } });
+    await repo.addBarcodeFood(food, emptyDraft(randomUUID), '250'); expect(repo.logs).toEqual(historical);
+    const reopened = await setup(storage); expect(reopened.foods.find(item => item.barcode === milkCode)).toEqual(food);
+    expect(reopened.draft.lines[0].quantityText).toBe('250'); expect(reopened.draft.lines[0].unit).toBe('ml');
+    await reopened.logDraft(reopened.draft); expect(reopened.logs.find(log => log.snapshot.kind === 'food' && log.snapshot.ingredient.food.id === food.id)?.nutrition).toEqual({ kcal: '92.5', protein: '9', carbohydrate: '11.75', fat: '1.25', fiber: null });
+    await reopened.undoLast(); expect(reopened.logs).toEqual(historical);
+    await reopened.saveFood({ ...food, nutrition: { ...food.nutrition, kcal: '38' } }); expect(reopened.logs).toEqual(historical);
+    const archive = await reopened.exportJSON(); const restored = await setup(await adapter()); await restored.restoreJSON(archive);
+    expect(restored.foods.find(item => item.barcode === milkCode)?.provenance.labelReview).toEqual(food.provenance.labelReview);
+    await restored.saveFood({ ...food, nutrition: { ...food.nutrition, kcal: '39' } });
+    await restored.restoreJSON(archive, { recoverMissing: true }); expect(restored.foods.find(item => item.id === food.id)?.nutrition.kcal).toBe('39');
+    await restored.restoreJSON(archive); expect(restored.foods.find(item => item.id === food.id)?.nutrition.kcal).toBe('38'); expect(restored.logs).toEqual(historical);
+    await restored.close(); await reopened.close();
+  });
+  it('does not partially save a product or draft if the write fails, and rejects equivalent duplicate barcodes', async () => {
+    const storage = await adapter(); let fail = false;
+    const repo = await setup({ ...storage, commit: (changes, revision) => fail ? Promise.reject(new Error('simulated disk failure')) : storage.commit(changes, revision) });
+    const { food } = confirmBarcodeProduct(parseBarcodeProduct(milkProduct(), milkCode)!, { name: 'TINE milk', referenceUnit: 'ml', amount: '100', nutrition: { kcal: '37', protein: '3.6', carbohydrate: '4.7', fat: '0.5', fiber: '' } });
+    const original = repo.draft; fail = true; await expect(repo.addBarcodeFood(food, original)).rejects.toThrow('disk failure'); expect(repo.foods).toEqual([]); expect(repo.draft).toEqual(original);
+    fail = false; await repo.saveFood({ ...food, id: 'local-label', barcode: '07038010001918' });
+    await expect(repo.addBarcodeFood(food, original)).rejects.toThrow('already linked'); expect(repo.draft).toEqual(original); expect(repo.foods).toHaveLength(1);
+    // Existing installations could already contain differently padded codes.
+    // Adding an explicit existing record must not delete or block those foods.
+    await repo.saveFood(food); await repo.addBarcodeFood(food, original); expect(repo.foods).toHaveLength(2); expect(repo.draft.lines[0].food?.id).toBe(food.id);
+    const before = structuredClone({ foods: repo.foods, draft: repo.draft }); fail = true;
+    const corrected = { ...food, nutrition: { ...food.nutrition, kcal: '39' } };
+    await expect(repo.saveFood(corrected, { ...repo.draft, lines: repo.draft.lines.map(line => ({ ...line, food: corrected })) })).rejects.toThrow('disk failure');
+    expect(repo.foods).toEqual(before.foods); expect(repo.draft).toEqual(before.draft); await repo.close();
+  });
   it('deletes only chosen entries and restores exact corrected snapshots, unknowns and IDs', async () => {
     const repo = await setup(await adapter()), draft = draftFor();
     draft.lines[0].food = { ...oil, nutrition: { ...oil.nutrition, fiber: null } };

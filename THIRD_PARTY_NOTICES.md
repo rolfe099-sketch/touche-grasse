@@ -10,6 +10,12 @@ Official usage information: https://matvaretabellen.mattilsynet.io/en/api/
 
 The documentation requests attribution and describes local caching. No ownership of the source database is claimed; the software license does not relicense it. Preserve attribution and review the source's current terms when redistributing or refreshing data.
 
+## Open Food Facts product data
+
+Optional barcode lookup uses [Open Food Facts](https://world.openfoodfacts.org/) API v3.6. Contains information from Open Food Facts, made available under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/1-0/); individual contents are under the [Database Contents License](https://opendatacommons.org/licenses/dbcl/1-0/). These terms are separate from the app's AGPL code license. Preserve attribution and applicable share-alike terms when redistributing derived product databases. This integration does not bundle product images or a public combined food database.
+
+Reviewed product records and their exported snapshots retain source URLs, retrieval/review dates, original values, correction provenance and license identification. Matvaretabellen attribution is retained independently. Product review is a user comparison with the package, not independent verification by Touche Grasse. See the provider's [license guidance](https://openfoodfacts.github.io/openfoodfacts-server/api/tutorials/license-be-on-the-legal-side/).
+
 ## Fonts
 
 DM Sans and Newsreader are supplied through `@expo-google-fonts` under the SIL Open Font License. A Source Sans 3 notice remains from earlier typography work. Texts are preserved in `apps/mobile/assets/licenses/`. The npm packages and tooling retain their own notices.

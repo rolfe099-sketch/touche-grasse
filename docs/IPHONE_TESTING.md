@@ -79,8 +79,10 @@ Use a separate test diary or export first. Record model, exact iOS version, runt
 | Language | English and Norwegian commands select reviewed records; unsupported speech locale leaves typing usable | Pending |
 | Camera lifecycle | Permission request is user-started; deny→Settings/manual fallback; background/lock/navigation releases camera; resume requires Open camera | Pending |
 | Barcode latch | A saved barcode adds one row once; unknown code offers manual label entry; editing code clears stale guidance | Pending |
+| New packaged product | Scan a real package, review sourced values and g/ml basis, correct a field and add an amount. Nothing is eaten until Log. Scan again offline to use the saved record. | Automated API-fixture workflow covered; physical camera/provider test pending |
 | Export/share | Save an export through Files; cancel/retry; temporary app export is removed after share sheet closes | Pending |
 | Restore | Restore into an isolated test store, repeat restore without duplicate history, confirm targets/drafts/remaining portions | Pending |
+| Automatic recovery | Settings lists automatic copies after a quiet period. Export a copy through Files; recovery merges missing entries and keeps existing history/current draft. Do not delete real app data to test this. | Browser loss-of-isolated-test-database and native fake file-port tests covered; physical Files/recovery test pending |
 | Photos | Select a photo, save recipe, relaunch and restore; share no location metadata | Pending |
 | Offline | Native catalog/search/log/repeat/relaunch work without networking; recognizer limitations remain visible | Pending |
 | Accessibility | VoiceOver field/action order, large Dynamic Type, high contrast, reduced motion and touch targets | Pending |

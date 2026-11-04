@@ -138,7 +138,7 @@ test('manual per-100ml food, unknown nutrient and cached barcode round trip', as
   await page.getByTestId('today-add').click();
   await page.getByRole('button', { name: 'Scan a barcode', exact: true }).click();
   await page.getByRole('textbox', { name: 'Barcode', exact: true }).fill('1234567890123');
-  await page.getByRole('button', { name: 'Find saved product', exact: true }).click();
+  await page.getByRole('button', { name: 'Find product', exact: true }).click();
   await expect(page.getByTestId('quantity-0')).toHaveValue('100');
   await page.getByTestId('commit-food').click();
   await expect(page.getByTestId('nutrition-kcal')).toHaveText('140');

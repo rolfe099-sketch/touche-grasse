@@ -60,7 +60,7 @@ export default function Recipes() {
 
     </View>)}</>}
 
-    {(section === 'all' || section === 'foods') && <><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}><Text style={{ fontWeight: '700', fontSize: 25 }}>Personal foods</Text><TextButton label="Create a food" onPress={() => router.push('/manual')} /></View>{foods.length ? foods.map(food => <FoodRow key={food.id} food={food} saved onSelect={() => { app.setDraft({ ...app.draft, lines: [...app.draft.lines, { id: app.repo.id(), query: food.name, quantityText: '100', unit: food.referenceUnit, food }] }); router.push('/entry'); }} />) : <Text style={{ color: colors.secondary, fontSize: 14, paddingVertical: 10 }}>Foods you save or log will appear here.</Text>}</>}
+    {(section === 'all' || section === 'foods') && <><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}><Text style={{ fontWeight: '700', fontSize: 25 }}>Personal foods</Text><TextButton label="Create a food" onPress={() => router.push('/manual')} /></View>{foods.length ? foods.map(food => <FoodRow key={food.id} food={food} saved onEdit={food.provenance.source !== 'matvaretabellen' ? () => router.push({ pathname: '/manual', params: { edit: food.id } }) : undefined} onSelect={() => { app.setDraft({ ...app.draft, lines: [...app.draft.lines, { id: app.repo.id(), query: food.name, quantityText: '100', unit: food.referenceUnit, food }] }); router.push('/entry'); }} />) : <Text style={{ color: colors.secondary, fontSize: 14, paddingVertical: 10 }}>Foods you save or log will appear here.</Text>}</>}
 
   </Screen>;
 

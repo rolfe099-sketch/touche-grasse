@@ -51,5 +51,7 @@ jobs:
             verification/iphone-readiness
             verification/deletion
             verification/voice-multi
+            verification/barcode
+            verification/recovery
             apps/mobile/test-results
           retention-days: 7

@@ -51,8 +51,8 @@ export function IconButton({ name, label, onPress, disabled = false, testID, fil
   return <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} testID={testID}
     style={({ pressed }) => ({ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: filled ? 10 : 22, backgroundColor: pressed ? colors.pressed : filled ? colors.raised : 'transparent', opacity: disabled ? 0.3 : 1 })}><Icon name={name} size={20} color={destructive ? colors.error : filled ? colors.ink : colors.action} /></Pressable>;
 }
-export function Field({ label, ...props }: TextInputProps & { label: string }) {
-  return <View style={styles.field}><Text style={{ fontSize: 13, fontWeight: '600', color: colors.secondary }}>{label}</Text><TextInput accessibilityLabel={label} placeholderTextColor={colors.secondary} {...props} style={[styles.input, props.style]} /></View>;
+export function Field({ label, compact = false, ...props }: TextInputProps & { label: string; compact?: boolean }) {
+  return <View style={[styles.field, compact && { gap: 3, marginBottom: 6 }]}><Text style={{ fontSize: compact ? 12 : 13, fontWeight: '600', color: colors.secondary }}>{label}</Text><TextInput accessibilityLabel={label} placeholderTextColor={colors.secondary} {...props} style={[styles.input, compact && { minHeight: 44, fontSize: 15, paddingVertical: 8 }, props.style]} /></View>;
 }
 export function Section({ title, children }: { title: string; children?: React.ReactNode }) {
   return <View style={styles.section}><Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '700', letterSpacing: -0.2, color: colors.ink }}>{title}</Text>{children}</View>;
@@ -101,12 +101,13 @@ export function NutritionView({ value, large = false, caption = 'kcal', empty = 
     {!empty && nutrients.some(key => value[key] == null) && <Text style={[styles.subtitle, { marginTop: 10, fontSize: 12 }]}>– means a nutrient value is unknown.</Text>}
   </View>;
 }
-export const FoodRow = React.memo(function FoodRow({ food, onSelect, onSave, saved = false }: { food: Food; onSelect: () => void; onSave?: () => void; saved?: boolean }) {
+export const FoodRow = React.memo(function FoodRow({ food, onSelect, onSave, onEdit, saved = false }: { food: Food; onSelect: () => void; onSave?: () => void; onEdit?: () => void; saved?: boolean }) {
   return <View style={styles.row}>
     <Pressable onPress={onSelect} accessibilityRole="button" accessibilityLabel={`Select ${food.name}`} testID={`food-${food.id}`} style={({ pressed }) => ({ flex: 1, minHeight: 44, justifyContent: 'center', gap: 4, opacity: pressed ? 0.6 : 1 })}>
       <Text style={styles.foodName}>{foodLabel(food)}</Text>
-      <Text style={{ color: colors.secondary, fontSize: 12 }}>{saved ? 'Your library' : food.provenance.source === 'matvaretabellen' ? 'Matvaretabellen' : 'Personal food'} · {display(food.nutrition.kcal, 0)} kcal / 100 {food.referenceUnit}</Text>
+      <Text style={{ color: colors.secondary, fontSize: 12 }}>{food.provenance.source === 'openFoodFacts' ? 'Open Food Facts · label reviewed' : saved ? 'Your library' : food.provenance.source === 'matvaretabellen' ? 'Matvaretabellen' : 'Personal food'} · {display(food.nutrition.kcal, 0)} kcal / 100 {food.referenceUnit}</Text>
     </Pressable>
+    {onEdit && <TextButton label="Edit" accessibilityLabel={`Edit label for ${food.name}`} onPress={onEdit} />}
     {onSave ? <IconButton name={saved ? 'check' : 'bookmark'} label={`Save ${food.name}`} onPress={onSave} /> : <IconButton name="plus" label={`Add ${food.name}`} onPress={onSelect} />}
   </View>;
 });
