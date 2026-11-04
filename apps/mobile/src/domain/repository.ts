@@ -112,7 +112,7 @@ export class Repository {
   addBarcodeFood(input: Food, inputDraft: Draft, amount = '100') {
     const food = validateFood(structuredCopy(input));
     foodNutrition(food, amount, food.referenceUnit);
-    const draft = draftSchema.parse({ ...structuredCopy(inputDraft), lines: [...inputDraft.lines, { id: this.id(), query: food.name, food, quantityText: amount, unit: food.referenceUnit }] });
+    const draft = draftSchema.parse({ ...structuredCopy(inputDraft), lines: [...inputDraft.lines, { id: this.id(), query: food.name, food, quantityText: amount, unit: food.referenceUnit, entrySource: 'barcode' }] });
     return this.serialized(async () => {
       const unchangedBarcode = this.foods.some(item => item.id === food.id && item.barcode === food.barcode);
       if (!unchangedBarcode && food.barcode && this.foods.some(item => item.id !== food.id && item.barcode && sameBarcode(item.barcode, food.barcode!))) throw new Error('This barcode is already linked to a saved food. Scan it again to use your saved record.');
@@ -169,7 +169,7 @@ export class Repository {
       const matches = { ...this.quickEntry.matches };
       // Log is the user's confirmation of the complete review. Last correction
       // wins. A cancelled draft or failed transaction never teaches a match.
-      for (const line of draft.lines) if (normalize(line.query)) matches[normalize(line.query)] = { foodId: line.food!.id, confirmedAt: at.toISOString() };
+      for (const line of draft.lines) if (!line.entrySource && normalize(line.query)) matches[normalize(line.query)] = { foodId: line.food!.id, confirmedAt: at.toISOString() };
       const preferences = quickEntrySchema.parse({ ...this.quickEntry, matches });
       await this.commit([...draft.lines.map(l => put('food', l.food!.id, l.food)), ...fresh.map(e => put('log', e.id, e)), put('draft', 'active', nextDraft), put('undo', 'latest', ids), put('deletionUndo', 'latest', []), put('quickEntry', 'preferences', preferences)]);
       this.quickEntry = preferences;
@@ -284,7 +284,7 @@ export class Repository {
       const batch = validateBatch({ id: draft.id, createdAt: new Date().toISOString(), meal: draft.meal, recipe });
       const foods = [...new Map([...this.foods, ...draft.lines.map(line => line.food!)].map(food => [food.id, food])).values()]; this.checkBarcodes(foods);
       const matches = { ...this.quickEntry.matches };
-      for (const line of draft.lines) if (normalize(line.query)) matches[normalize(line.query)] = { foodId: line.food!.id, confirmedAt: batch.createdAt };
+      for (const line of draft.lines) if (!line.entrySource && normalize(line.query)) matches[normalize(line.query)] = { foodId: line.food!.id, confirmedAt: batch.createdAt };
       const preferences = quickEntrySchema.parse({ ...this.quickEntry, matches }), nextDraft = emptyDraft(this.id);
       await this.commit([put('preparedBatch', batch.id, batch), ...draft.lines.map(line => put('food', line.food!.id, line.food)), put('quickEntry', 'preferences', preferences), put('draft', 'active', nextDraft)]);
       this.preparedBatches = [...this.preparedBatches, batch]; this.foods = foods; this.quickEntry = preferences; this.draft = nextDraft; this.sortAndIndex(); return batch;

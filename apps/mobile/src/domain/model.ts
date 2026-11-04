@@ -24,7 +24,7 @@ export const recipeSchema = z.object({
   steps: z.array(z.string().max(5000)).max(100), servings: decimalSchema, cookedWeightGrams: decimalSchema.nullable(), favorite: z.boolean(),
   photo: z.string().max(3000000).regex(/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/).optional(),
 });
-export const lineSchema = z.object({ id: z.string(), query: z.string().max(500), quantityText: z.string().max(100), unit: unitSchema, food: foodSchema.nullable() });
+export const lineSchema = z.object({ id: z.string(), query: z.string().max(500), quantityText: z.string().max(100), unit: unitSchema, food: foodSchema.nullable(), entrySource: z.enum(['barcode', 'product']).optional() });
 export const splitPlanSchema = z.object({ name: z.string().max(300), servingsText: z.string().max(100), cookedWeightText: z.string().max(100) });
 export type SplitPlan = z.infer<typeof splitPlanSchema>;
 export const draftSchema = z.object({ id: z.string(), text: z.string().max(10000), lines: z.array(lineSchema).max(200), meal: z.enum(meals),

@@ -40,7 +40,11 @@ for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} r
     const reopened = await setup(storage); expect(reopened.foods.find(item => item.barcode === milkCode)).toEqual(food);
     expect(reopened.draft.lines[0].quantityText).toBe('250'); expect(reopened.draft.lines[0].unit).toBe('ml');
     await reopened.logDraft(reopened.draft); expect(reopened.logs.find(log => log.snapshot.kind === 'food' && log.snapshot.ingredient.food.id === food.id)?.nutrition).toEqual({ kcal: '92.5', protein: '9', carbohydrate: '11.75', fat: '1.25', fiber: null });
+    expect(reopened.quickEntry.matches['tine milk']).toBeUndefined();
     await reopened.undoLast(); expect(reopened.logs).toEqual(historical);
+    await reopened.logDraft({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(), query: food.name, food, quantityText: '100', unit: 'ml', entrySource: 'product' }] }); expect(reopened.quickEntry.matches['tine milk']).toBeUndefined(); await reopened.undoLast();
+    const typed = updateLiveText('100ml low fat milk', emptyDraft(randomUUID), reopened.index, reopened.quickEntry, randomUUID); expect(typed.lines[0].food).toBeNull();
+    await reopened.logDraft(editLiveLine(typed, typed.lines[0].id, { food })); expect(reopened.quickEntry.matches['low fat milk'].foodId).toBe(food.id); await reopened.undoLast();
     await reopened.saveFood({ ...food, nutrition: { ...food.nutrition, kcal: '38' } }); expect(reopened.logs).toEqual(historical);
     const archive = await reopened.exportJSON(); const restored = await setup(await adapter()); await restored.restoreJSON(archive);
     expect(restored.foods.find(item => item.barcode === milkCode)?.provenance.labelReview).toEqual(food.provenance.labelReview);

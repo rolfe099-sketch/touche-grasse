@@ -2,7 +2,7 @@
 
 The active application is `apps/mobile` (Expo), not the original Swift prototype. The owner's test target is an **iPhone 13 Pro**. Record the exact iOS version from Settings → General → About; "latest" is not a reproducible version.
 
-On 4 November 2026, the owner confirmed installation and Today launch, correct 10g olive-oil nutrition, repeat, undo, reopen persistence, and the new entry-delete/Undo flow on that physical iPhone. Single-ingredient speech worked; multi-ingredient speech captured the words but exposed a clause-parsing failure. After the fix and an explicit development-client Reload, the owner confirmed that the existing sentence split into three rows. Other device checks below remain pending. The exact iOS version remains unrecorded.
+On 4 November 2026, the owner confirmed installation and Today launch, correct 10g olive-oil nutrition, repeat, undo, reopen persistence, and the new entry-delete/Undo flow on that physical iPhone. Single-ingredient speech worked; multi-ingredient speech captured the words but exposed a clause-parsing failure. After the fix and an explicit development-client Reload, the owner confirmed that the existing sentence split into three rows. The owner also confirmed that scanning a packaged food opens its editable product review. Other device checks below remain pending. The exact iOS version remains unrecorded.
 
 ## What Windows checks establish
 
@@ -79,7 +79,7 @@ Use a separate test diary or export first. Record model, exact iOS version, runt
 | Language | English and Norwegian commands select reviewed records; unsupported speech locale leaves typing usable | Pending |
 | Camera lifecycle | Permission request is user-started; deny→Settings/manual fallback; background/lock/navigation releases camera; resume requires Open camera | Pending |
 | Barcode latch | A saved barcode adds one row once; unknown code offers manual label entry; editing code clears stale guidance | Pending |
-| New packaged product | Scan a real package, review sourced values and g/ml basis, correct a field and add an amount. Nothing is eaten until Log. Scan again offline to use the saved record. | Automated API-fixture workflow covered; physical camera/provider test pending |
+| New packaged product | Scan a real package, review sourced values and g/ml basis, correct a field and add an amount. Nothing is eaten until Log. Scan again offline to use the saved record. | Editable product review appears after scanning a real package, owner-confirmed on iPhone 13 Pro. Physical label correction, basis choice and offline reuse pending |
 | Export/share | Save an export through Files; cancel/retry; temporary app export is removed after share sheet closes | Pending |
 | Restore | Restore into an isolated test store, repeat restore without duplicate history, confirm targets/drafts/remaining portions | Pending |
 | Automatic recovery | Settings lists automatic copies after a quiet period. Export a copy through Files; recovery merges missing entries and keeps existing history/current draft. Do not delete real app data to test this. | Browser loss-of-isolated-test-database and native fake file-port tests covered; physical Files/recovery test pending |

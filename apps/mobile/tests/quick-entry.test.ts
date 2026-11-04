@@ -142,3 +142,12 @@ it('never turns a unique generic alias into an assumption about preparation, whi
   const preferences = { matches: { chicken: { foodId: chicken.id, confirmedAt: new Date().toISOString() } }, favorites: [] };
   expect(matchIngredient('chicken', personal, preferences).food?.id).toBe(chicken.id);
 });
+it('does not auto-match provider aliases until the user confirms that text query, and retains barcode origin through voice additions', () => {
+  const personal = new FoodIndex(), packaged: Food = { ...chicken, id: 'off:packaged', name: 'Chicken', aliases: ['chicken'], provenance: { ...chicken.provenance, source: 'openFoodFacts' } };
+  personal.add(packaged); expect(matchIngredient('chicken', personal, emptyPreferences()).food).toBeNull();
+  const confirmed = { matches: { chicken: { foodId: packaged.id, confirmedAt: new Date().toISOString() } }, favorites: [] };
+  expect(matchIngredient('chicken', personal, confirmed).food?.id).toBe(packaged.id);
+  const line = { id: 'scanned', query: 'Chicken', quantityText: '100', unit: 'g' as const, food: packaged, entrySource: 'barcode' as const };
+  const source = { ...emptyDraft(randomUUID), text: '100g Chicken', lines: [line], textRows: [{ id: line.id, query: line.query, quantityText: line.quantityText, unit: line.unit }] };
+  expect(updateLiveText('100g Chicken, 10g olive oil', source, personal, emptyPreferences(), randomUUID).lines[0].entrySource).toBe('barcode');
+});

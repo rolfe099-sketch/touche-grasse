@@ -27,7 +27,9 @@ export function matchIngredient(query: string, index: FoodIndex, preferences: Qu
   const remembered = preferences.matches[normalize(query)];
   const previous = remembered && index.get(remembered.foodId);
   const learned = previous && cookingRecordAllowed(query, previous) ? previous : undefined;
-  const exact = index.exact(query).filter(food => cookingRecordAllowed(query, food));
+  // A provider's generic product name/alias is not a confirmed cooking query.
+  // Barcode reuse is immediate; text matching needs its own explicit choice.
+  const exact = index.exact(query).filter(food => food.provenance.source !== 'openFoodFacts' && cookingRecordAllowed(query, food));
   const food = learned || (exact.length === 1 && !preparationNeedsChoice(query, exact[0]) ? exact[0] : null);
   const candidates = index.search(query);
   return { food, reason: learned ? 'remembered' : food ? 'exact' : 'needs-choice', candidates: food ? [food, ...candidates.filter(f => f.id !== food.id)] : candidates };
@@ -62,6 +64,7 @@ export function updateLiveText(text: string, draft: Draft, index: FoodIndex, pre
     rows.push({ id: lineId, query: source.query, quantityText: source.quantityText, unit: source.unit });
     const sameQuery = old && previousSource && normalize(previousSource.query) === normalize(source.query);
     return { ...source, id: lineId,
+      ...(sameQuery && old.entrySource ? { entrySource: old.entrySource } : {}),
       food: sameQuery ? old.food : matchIngredient(source.query, index, preferences).food,
       quantityText: sameQuery && previousSource.quantityText === source.quantityText ? old.quantityText : source.quantityText,
       unit: sameQuery && previousSource.unit === source.unit ? old.unit : source.unit };
