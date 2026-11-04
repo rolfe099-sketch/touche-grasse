@@ -69,6 +69,7 @@ Use a separate test diary or export first. Record model, exact iOS version, runt
 | One-action meal log | All resolved rows log together; keyboard does not require a separate dismiss tap first | Pending |
 | Six portions | Save six servings without logging; no final weight assumed; log one serving = exactly one-sixth; five remain | Pending |
 | Repeat and undo | Repeat one meal or serving, undo, relaunch; counts and totals remain correct | Olive-oil repeat to 178 kcal, Undo to 89 kcal and relaunch passed, owner-confirmed on iPhone 13 Pro; saved serving pending |
+| Adjusted repeat | Edit an amount before logging; totals update, one action logs the meal, Undo removes the repeat | Amount field, totals, logging and Undo passed comfortably on iPhone 13 Pro, owner-confirmed; multi-row and finite-inventory device edge cases pending |
 | Delete an entry | Trash beside a diary entry removes only that entry; Undo restores its original values | Passed on iPhone 13 Pro, owner-confirmed |
 | Interrupted draft | Switch tabs, lock/unlock, background and relaunch; unfinished entry stays editable | Pending |
 | Voice first permission | A requested permission prompt may briefly interrupt the app; capture begins only for the still-active request | Pending |

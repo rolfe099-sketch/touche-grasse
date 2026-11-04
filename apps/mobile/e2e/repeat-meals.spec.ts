@@ -17,7 +17,9 @@ async function restore(page: Page, value: unknown = fixture()) {
   await page.getByRole('button', { name: 'Confirm restore', exact: true }).click(); await expect(page.getByText('Backup restored', { exact: true })).toBeVisible(); await page.goto('/');
 }
 async function backup(page: Page) {
-  await page.goto('/settings'); const downloading = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export backup', exact: true }).click();
+  if (page.url().includes('/entry')) await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Your data and settings', exact: true }).click();
+  const downloading = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export backup', exact: true }).click();
   return JSON.parse(readFileSync((await (await downloading).path())!, 'utf8'));
 }
 class Measurement {
@@ -40,17 +42,17 @@ test('measured repeat: one tap unchanged, or adjust one amount before logging in
   await page.screenshot({ path: path.join(output, 'before-correct-after-logging.png') });
   await m.enter(page.getByRole('textbox', { name: 'Logged amount', exact: true }), '15');
   await m.click(page.getByRole('button', { name: 'Save correction', exact: true }), 'Save correction');
-  await expect(page.getByTestId('nutrition-kcal')).toHaveText('356'); results.push(m.finish());
-  await page.getByRole('button', { name: 'Undo last log', exact: true }).click(); await expect(page.getByTestId('nutrition-kcal')).toHaveText('–');
+  await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('356'); results.push(m.finish());
+  await page.getByRole('button', { name: 'Undo last log', exact: true }).click(); await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('–');
   m = new Measurement(page, 'After: adjust one amount inline, then log the whole meal');
   await m.click(page.getByRole('button', { name: 'Adjust usual meal 1', exact: true }), 'Adjust usual meal');
   await m.enter(page.getByRole('textbox', { name: 'Repeat amount 1', exact: true }), '15');
   await expect(page.getByRole('textbox', { name: 'Repeat amount 2', exact: true })).toHaveValue('200'); await expect(page.getByTestId('repeat-totals')).toContainText('356 kcal');
   await page.screenshot({ path: path.join(output, 'after-adjust-before-logging.png') });
   await m.click(page.getByRole('button', { name: 'Log adjusted meal today', exact: true }), 'Log adjusted meal');
-  await expect(page.getByTestId('repeat-review')).toHaveCount(0); await expect(page.getByTestId('nutrition-kcal')).toHaveText('356'); results.push(m.finish());
+  await expect(page.getByTestId('repeat-review')).toHaveCount(0); await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('356'); results.push(m.finish());
   await page.getByRole('button', { name: 'Undo last log', exact: true }).click();
-  m = new Measurement(page, 'Unchanged meal remains one tap'); await m.click(page.getByTestId('repeat-meal').first(), 'Repeat meal'); await expect(page.getByTestId('nutrition-kcal')).toHaveText('311'); results.push(m.finish());
+  m = new Measurement(page, 'Unchanged meal remains one tap'); await m.click(page.getByTestId('repeat-meal').first(), 'Repeat meal'); await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('311'); results.push(m.finish());
   expect(results.map(value => value.tapsAndTextActions)).toEqual([6, 4, 1]); expect(errors).toEqual([]);
   const saved = await backup(page); expect(saved.logs.filter((entry: LogEntry) => entry.id.startsWith('original-'))).toEqual(value.logs);
   writeFileSync(path.join(output, `${test.info().project.name || 'chromium'}-interactions.json`), JSON.stringify(results, null, 2));
@@ -76,14 +78,14 @@ test('adjusted saved servings respect finite inventory, retain rejected amounts 
   await page.getByRole('button', { name: 'Adjust recent meal 1', exact: true }).click(); await page.getByRole('textbox', { name: 'Repeat amount 1', exact: true }).fill('6');
   await expect(page.getByRole('button', { name: 'Log adjusted meal today', exact: true })).toBeDisabled(); await expect(page.getByRole('alert').filter({ hasText: /remaining|available|enough/i })).toBeVisible(); await expect(page.getByRole('textbox', { name: 'Repeat amount 1', exact: true })).toHaveValue('6');
   await page.getByRole('textbox', { name: 'Repeat amount 1', exact: true }).fill('2'); await page.getByRole('button', { name: 'Log adjusted meal today', exact: true }).click(); await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByTestId('nutrition-kcal')).toHaveText('178'); await expect(page.getByTestId('today-portions')).toContainText('3 servings left');
+  await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('178'); await expect(page.getByTestId('today-portions')).toContainText('3 servings left');
   await page.getByRole('button', { name: 'Undo last log', exact: true }).click(); await expect(page.getByTestId('today-portions')).toContainText('5 servings left');
   const saved = await backup(page); expect(saved.logs).toEqual(value.logs);
 });
 
 test('same breakfast as yesterday repeats only that calendar meal and missing meals do not substitute the last meal', async ({ page }) => {
   const value = fixture(); await restore(page, value); await page.getByTestId('today-add').click(); await page.getByRole('button', { name: 'Type commands', exact: true }).click();
-  await page.getByTestId('voice-command').fill('Same breakfast as yesterday'); await page.getByRole('button', { name: 'Apply meal command', exact: true }).click(); await expect(page).toHaveURL(/\/$/); await expect(page.getByTestId('nutrition-kcal')).toHaveText('311');
+  await page.getByTestId('voice-command').fill('Same breakfast as yesterday'); await page.getByRole('button', { name: 'Apply meal command', exact: true }).click(); await expect(page).toHaveURL(/\/$/); await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('311');
   await page.getByTestId('today-add').click(); await page.getByRole('button', { name: 'Type commands', exact: true }).click();
   await page.getByTestId('voice-command').fill('Same lunch as yesterday'); await page.getByRole('button', { name: 'Apply meal command', exact: true }).click(); await expect(page.getByRole('alert').filter({ hasText: 'No lunch was logged yesterday.' })).toBeVisible();
   const saved = await backup(page); expect(saved.logs).toHaveLength(4); expect(saved.logs.filter((entry: LogEntry) => entry.id.startsWith('original-'))).toEqual(value.logs);
