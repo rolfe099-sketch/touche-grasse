@@ -22,6 +22,10 @@ export class Repository {
   recipes: Recipe[] = [];
   draft: Draft;
   undo: string[] = [];
+  private deletionUndo: LogEntry[] = [];
+  get isDeletionUndo() { return !!this.deletionUndo.length && this.deletionUndo.length === this.undo.length && this.deletionUndo.every(log => this.undo.includes(log.id)); }
+  get undoLabel() { return this.isDeletionUndo ? 'Undo deletion' : 'Undo last log'; }
+  get undoNotice() { return this.isDeletionUndo ? 'Deletion undone' : 'Log undone'; }
   profile = { firstUsedAt: new Date().toISOString() };
   recipeDrafts: Record<string, z.infer<typeof recipeDraftSchema>> = {};
   quickEntry: QuickEntryPreferences = emptyPreferences();
@@ -42,6 +46,7 @@ export class Repository {
       else if (record.kind === 'recipe') this.recipes.push(recipeSchema.parse(record.value));
       else if (record.kind === 'draft') this.draft = draftSchema.parse(record.value);
       else if (record.kind === 'undo') this.undo = z.array(z.string()).parse(record.value);
+      else if (record.kind === 'deletionUndo') this.deletionUndo = z.array(logSchema).parse(record.value);
       else if (record.kind === 'profile') this.profile = profileSchema.parse(record.value);
       else if (record.kind === 'recipeDraft') this.recipeDrafts[record.id] = recipeDraftSchema.parse(record.value);
       else if (record.kind === 'preparedBatch') this.preparedBatches.push(validateBatch(record.value as PreparedBatch));
@@ -152,9 +157,9 @@ export class Repository {
       // wins. A cancelled draft or failed transaction never teaches a match.
       for (const line of draft.lines) if (normalize(line.query)) matches[normalize(line.query)] = { foodId: line.food!.id, confirmedAt: at.toISOString() };
       const preferences = quickEntrySchema.parse({ ...this.quickEntry, matches });
-      await this.commit([...draft.lines.map(l => put('food', l.food!.id, l.food)), ...fresh.map(e => put('log', e.id, e)), put('draft', 'active', nextDraft), put('undo', 'latest', ids), put('quickEntry', 'preferences', preferences)]);
+      await this.commit([...draft.lines.map(l => put('food', l.food!.id, l.food)), ...fresh.map(e => put('log', e.id, e)), put('draft', 'active', nextDraft), put('undo', 'latest', ids), put('deletionUndo', 'latest', []), put('quickEntry', 'preferences', preferences)]);
       this.quickEntry = preferences;
-      this.foods = foods; this.logs = [...this.logs, ...fresh]; this.draft = nextDraft; this.undo = ids; this.sortAndIndex();
+      this.foods = foods; this.logs = [...this.logs, ...fresh]; this.draft = nextDraft; this.undo = ids; this.deletionUndo = []; this.sortAndIndex();
     });
   }
   repeat(entry: LogEntry, at = new Date()) {
@@ -173,15 +178,37 @@ export class Repository {
       });
       assertBatchCapacity(this.preparedBatches, [...this.logs, ...logs]);
       const undo = logs.map(log => log.id);
-      await this.commit([...logs.map(log => put('log', log.id, log)), put('undo', 'latest', undo)]);
-      this.logs = [...this.logs, ...logs]; this.undo = undo; this.sortAndIndex();
+      await this.commit([...logs.map(log => put('log', log.id, log)), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
+      this.logs = [...this.logs, ...logs]; this.undo = undo; this.deletionUndo = []; this.sortAndIndex();
+    });
+  }
+  deleteLogs(entryIds: string[]) {
+    const ids = [...new Set(entryIds)];
+    return this.serialized(async () => {
+      if (!ids.length || ids.length > 200) throw new Error('Choose 1–200 entries to delete.');
+      const deleted = ids.map(id => {
+        const entry = this.logs.find(log => log.id === id);
+        if (!entry) throw new Error('This entry is no longer available.');
+        return structuredCopy(entry);
+      });
+      await this.commit([...ids.map(id => ({ type: 'delete' as const, key: `log:${id}` })), put('undo', 'latest', ids), put('deletionUndo', 'latest', deleted)]);
+      this.logs = this.logs.filter(log => !ids.includes(log.id)); this.undo = ids; this.deletionUndo = deleted; this.sortAndIndex();
     });
   }
   undoLast() {
     return this.serialized(async () => {
+      if (!this.undo.length) return;
+      if (this.isDeletionUndo) {
+        if (this.deletionUndo.some(deleted => this.logs.some(log => log.id === deleted.id))) throw new Error('These entries already exist. Reload before continuing.');
+        const restored = [...this.logs, ...this.deletionUndo];
+        assertBatchCapacity(this.preparedBatches, restored);
+        // Restore the exact snapshots and correction history, never recalculate.
+        await this.commit([...this.deletionUndo.map(log => put('log', log.id, log)), put('undo', 'latest', []), put('deletionUndo', 'latest', [])]);
+        this.logs = restored; this.undo = []; this.deletionUndo = []; this.sortAndIndex(); return;
+      }
       const ids = new Set(this.undo);
-      await this.commit([...this.undo.map(id => ({ type: 'delete' as const, key: `log:${id}` })), put('undo', 'latest', [])]);
-      this.logs = this.logs.filter(l => !ids.has(l.id)); this.undo = []; this.sortAndIndex();
+      await this.commit([...this.undo.map(id => ({ type: 'delete' as const, key: `log:${id}` })), put('undo', 'latest', []), put('deletionUndo', 'latest', [])]);
+      this.logs = this.logs.filter(l => !ids.has(l.id)); this.undo = []; this.deletionUndo = []; this.sortAndIndex();
     });
   }
   correctLog(id: string, patch: { quantity: string; unit?: Unit | 'servings'; recordedAt?: string; meal?: Meal }) {
@@ -221,8 +248,8 @@ export class Repository {
     const log: LogEntry = { id: this.id(), batchId: this.id(), recordedAt: new Date().toISOString(), meal,
       snapshot: { kind: 'recipe', recipe: { ...structuredCopy(recipe), photo: undefined }, quantity, unit }, nutrition: recipePortion(recipe, quantity, unit) };
     return this.serialized(async () => {
-      await this.commit([put('log', log.id, log), put('undo', 'latest', [log.id])]);
-      this.logs = [...this.logs, log]; this.undo = [log.id]; this.sortAndIndex();
+      await this.commit([put('log', log.id, log), put('undo', 'latest', [log.id]), put('deletionUndo', 'latest', [])]);
+      this.logs = [...this.logs, log]; this.undo = [log.id]; this.deletionUndo = []; this.sortAndIndex();
     });
   }
   createPreparedBatch(recipe: Recipe, meal: Meal = 'Middag', batchId = this.id()) {
@@ -255,8 +282,8 @@ export class Repository {
       portionFits(batch, this.logs, quantity, unit);
       const snapshot: LogEntry['snapshot'] = { kind: 'recipe', recipe: structuredCopy(batch.recipe), quantity, unit };
       const log = logSchema.parse({ id: this.id(), batchId: this.id(), preparedBatchId: id, recordedAt: at.toISOString(), meal: meal ?? batch.meal, snapshot, nutrition: snapshotNutrition(snapshot) });
-      await this.commit([put('log', log.id, log), put('undo', 'latest', [log.id])]);
-      this.logs = [...this.logs, log]; this.undo = [log.id]; this.sortAndIndex(); return log;
+      await this.commit([put('log', log.id, log), put('undo', 'latest', [log.id]), put('deletionUndo', 'latest', [])]);
+      this.logs = [...this.logs, log]; this.undo = [log.id]; this.deletionUndo = []; this.sortAndIndex(); return log;
     });
   }
   async exportJSON() {
@@ -294,7 +321,9 @@ export class Repository {
       const matches = { ...backup.quickEntry?.matches };
       for (const [query, match] of Object.entries(this.quickEntry.matches)) if (!matches[query] || matches[query].confirmedAt <= match.confirmedAt) matches[query] = match;
       const preferences = quickEntrySchema.parse({ entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
-      await this.commit([...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : [])]);
+      const clearingDeletion = this.isDeletionUndo;
+      await this.commit([...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : []), ...(clearingDeletion ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
+      if (clearingDeletion) { this.undo = []; this.deletionUndo = []; }
       this.targets = targets; this.quickEntry = preferences; this.preparedBatches = preparedBatches;
       this.foods = foods; this.recipes = recipes; this.logs = logs; this.draft = draft; this.sortAndIndex();
       this.recipeDrafts = recipeDrafts;

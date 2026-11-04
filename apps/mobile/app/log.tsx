@@ -8,6 +8,7 @@ import { useApp } from '../src/state/AppContext';
 import { Button, Field, NutritionView, Screen, Section, styles, TextButton } from '../src/ui/components';
 import { Text } from '../src/ui/Text';
 import { colors } from '../src/ui/theme';
+import { DeleteLogButton } from '../src/ui/Diary';
 
 export default function LogDetails() {
   const app = useApp(), params = useLocalSearchParams<{ id: string }>();
@@ -19,7 +20,7 @@ export default function LogDetails() {
   const [date, setDate] = useState(entry ? dayKey(new Date(entry.recordedAt)) : dayKey(new Date()));
   const originalTime = entry ? new Date(entry.recordedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '12:00';
   const [time, setTime] = useState(originalTime), [audit, setAudit] = useState(false);
-  if (!entry || !snapshot) return <Screen title="Entry unavailable" back><Text style={styles.body}>This entry may have been undone. Your other records are still here.</Text></Screen>;
+  if (!entry || !snapshot) return <Screen title="Entry unavailable" back><Text style={styles.body}>This entry may have been deleted or undone. Your other records are still here.</Text></Screen>;
   async function save() {
     const ok = await app.run(async () => {
       const amount = parseAmount(quantity); if (amount === null) throw new Error('Check the amount.');
@@ -30,7 +31,7 @@ export default function LogDetails() {
     }, 'Entry corrected');
     if (ok) router.back();
   }
-  return <Screen testID="log-screen" title="Logged entry" back eyebrow={`${dateLabel(new Date(entry.recordedAt))} · ${originalTime}`}>
+  return <Screen testID="log-screen" title="Logged entry" back eyebrow={`${dateLabel(new Date(entry.recordedAt))} · ${originalTime}`} trailing={<DeleteLogButton entries={[entry]} label="Delete entry" onDeleted={() => router.canGoBack() ? router.back() : router.replace('/')} />}>
     <Text style={{ fontSize: 24, fontWeight: '600', lineHeight: 29, marginBottom: 4 }}>{logName(entry)}</Text>
     <Text style={styles.subtitle}>{logQuantity(entry)} · {mealLabel(entry.meal)}</Text>
     <NutritionView value={entry.nutrition} />

@@ -47,9 +47,9 @@ export function SegmentButton({ label, accessibilityLabel, selected, onPress, di
 export function TextButton({ label, accessibilityLabel, onPress, disabled = false }: { label: string; accessibilityLabel?: string; onPress: () => void; disabled?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={({ pressed }) => ({ minHeight: 44, minWidth: 44, justifyContent: 'center', borderRadius: 8, backgroundColor: pressed ? colors.selection : 'transparent', opacity: disabled ? 0.4 : 1 })}><Text style={{ color: colors.action, fontWeight: '600', fontSize: 14 }}>{label}</Text></Pressable>;
 }
-export function IconButton({ name, label, onPress, disabled = false, testID, filled = false }: { name: IconName; label: string; onPress: () => void; disabled?: boolean; testID?: string; filled?: boolean }) {
+export function IconButton({ name, label, onPress, disabled = false, testID, filled = false, destructive = false }: { name: IconName; label: string; onPress: () => void; disabled?: boolean; testID?: string; filled?: boolean; destructive?: boolean }) {
   return <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} testID={testID}
-    style={({ pressed }) => ({ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: filled ? 10 : 22, backgroundColor: pressed ? colors.pressed : filled ? colors.raised : 'transparent', opacity: disabled ? 0.3 : 1 })}><Icon name={name} size={20} color={filled ? colors.ink : colors.action} /></Pressable>;
+    style={({ pressed }) => ({ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: filled ? 10 : 22, backgroundColor: pressed ? colors.pressed : filled ? colors.raised : 'transparent', opacity: disabled ? 0.3 : 1 })}><Icon name={name} size={20} color={destructive ? colors.error : filled ? colors.ink : colors.action} /></Pressable>;
 }
 export function Field({ label, ...props }: TextInputProps & { label: string }) {
   return <View style={styles.field}><Text style={{ fontSize: 13, fontWeight: '600', color: colors.secondary }}>{label}</Text><TextInput accessibilityLabel={label} placeholderTextColor={colors.secondary} {...props} style={[styles.input, props.style]} /></View>;
@@ -65,7 +65,7 @@ export function Feedback() {
     </View>}
     {app.notice && <Reveal trigger={app.notice} style={{ backgroundColor: colors.selection, paddingLeft: 14, marginHorizontal: 22, marginBottom: 10, borderRadius: 10, flexDirection: 'row', alignItems: 'center' }}>
       <Text accessibilityLiveRegion="polite" style={{ flex: 1, color: colors.action, fontSize: 14, paddingVertical: 8 }}>{app.notice}</Text>
-      {!!app.repo.undo.length && <Pressable accessibilityRole="button" accessibilityLabel="Undo last log" disabled={app.busy} onPress={() => void app.run(() => app.repo.undoLast(), 'Log undone')} style={{ padding: 12, minHeight: 44 }}><Text style={{ color: colors.action, fontWeight: '700' }}>Undo</Text></Pressable>}
+      {!!app.repo.undo.length && <Pressable accessibilityRole="button" accessibilityLabel={app.repo.undoLabel} disabled={app.busy} onPress={() => void app.run(() => app.repo.undoLast(), app.repo.undoNotice)} style={{ padding: 12, minHeight: 44 }}><Text style={{ color: colors.action, fontWeight: '700' }}>Undo</Text></Pressable>}
       <IconButton name="close" label="Dismiss notification" onPress={app.clearNotice} />
     </Reveal>}
   </>;

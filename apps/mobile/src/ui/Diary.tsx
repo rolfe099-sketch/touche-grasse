@@ -11,6 +11,11 @@ import { Reveal } from './Motion';
 import { foodLabel } from '../domain/foodLanguage';
 import { Icon } from './Icon';
 
+export function DeleteLogButton({ entries, label, onDeleted }: { entries: LogEntry[]; label?: string; onDeleted?: () => void }) {
+  const app = useApp();
+  return <IconButton name="trash" destructive label={label ?? `Delete ${logName(entries[0])} entry`} disabled={app.busy} onPress={() => void app.run(() => app.repo.deleteLogs(entries.map(entry => entry.id)), entries.length > 1 ? 'Meal deleted' : 'Entry deleted').then(ok => { if (ok) onDeleted?.(); })} />;
+}
+
 function CompactMeal({ items }: { items: LogEntry[] }) {
   const app = useApp(), [expanded, setExpanded] = useState(false);
   const many = items.length > 1, first = items[0];
@@ -22,6 +27,7 @@ function CompactMeal({ items }: { items: LogEntry[] }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}><Text style={{ fontSize: 13, color: colors.secondary }}>{items.length} foods · {display(total(items.map(log => log.nutrition)).kcal, 0)} kcal</Text><Icon name={expanded ? 'back' : 'next'} size={12} color={colors.secondary} /></View>
       </Pressable>
       <IconButton name="repeat" label={`Repeat ${mealLabel(first.meal)} meal`} disabled={app.busy} onPress={() => void app.run(() => app.repo.repeatMeal(items.map(log => log.id)), 'Whole meal logged for today')} />
+      <DeleteLogButton entries={items} label={`Delete ${mealLabel(first.meal)} meal, ${items.length} entries`} />
     </View>}
     {/* Keep entry components mounted while folding the journal; hidden rows are excluded from layout and accessibility. */}
     <View style={{ display: !many || expanded ? 'flex' : 'none' }}>{items.map(log => <View key={log.id} testID="log-row" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: many ? 10 : 0, paddingVertical: 6 }}>
@@ -30,6 +36,7 @@ function CompactMeal({ items }: { items: LogEntry[] }) {
         <Text style={{ fontSize: 13, color: colors.secondary }}>{logQuantity(log)} · {display(log.nutrition.kcal, 0)} kcal · {new Date(log.recordedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}{log.corrections?.length ? ' · corrected' : ''}</Text>
       </Pressable>
       <IconButton name="repeat" label={`Log ${logName(log)} again`} disabled={app.busy} onPress={() => void app.run(() => app.repo.repeat(log), 'Logged for today')} />
+      <DeleteLogButton entries={[log]} />
     </View>)}</View>
   </View>;
 }
@@ -55,6 +62,7 @@ export function Diary({ entries, compact = false }: { entries: LogEntry[]; compa
           {!compact && log.snapshot.kind === 'recipe' && <Text style={{ fontSize: 12, color: colors.secondary }}>{plural(log.snapshot.recipe.ingredients.length, 'ingredient')}</Text>}
         </Pressable><Text style={{ fontSize: 15, fontWeight: '600' }}>{display(log.nutrition.kcal, 0)}<Text style={{ fontSize: 11, color: colors.secondary }}> kcal</Text></Text>
         <IconButton name="repeat" label={`Log ${logName(log)} again`} disabled={app.busy} onPress={() => void app.run(() => app.repo.repeat(log), 'Logged for today')} />
+        <DeleteLogButton entries={[log]} />
       </View></Reveal>)}
     </View>;
   })}</>;

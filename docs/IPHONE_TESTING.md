@@ -2,6 +2,8 @@
 
 The active application is `apps/mobile` (Expo), not the original Swift prototype. The owner's test target is an **iPhone 13 Pro**. Record the exact iOS version from Settings → General → About; "latest" is not a reproducible version.
 
+On 4 November 2026, the owner confirmed installation and Today launch, correct 10g olive-oil nutrition, repeat, undo, reopen persistence, and the new entry-delete/Undo flow on that physical iPhone. Other device checks below remain pending; this does not certify voice or camera execution. The exact iOS version remains unrecorded.
+
 ## What Windows checks establish
 
 - TypeScript, domain tests and both storage adapters exercise exact meal/portion math and historical persistence.
@@ -66,6 +68,7 @@ Use a separate test diary or export first. Record model, exact iOS version, runt
 | One-action meal log | All resolved rows log together; keyboard does not require a separate dismiss tap first | Pending |
 | Six portions | Save six servings without logging; no final weight assumed; log one serving = exactly one-sixth; five remain | Pending |
 | Repeat and undo | Repeat one meal or serving, undo, relaunch; counts and totals remain correct | Pending |
+| Delete an entry | Trash beside a diary entry removes only that entry; Undo restores its original values | Passed on iPhone 13 Pro, owner-confirmed |
 | Interrupted draft | Switch tabs, lock/unlock, background and relaunch; unfinished entry stays editable | Pending |
 | Voice first permission | A requested permission prompt may briefly interrupt the app; capture begins only for the still-active request | Pending |
 | Voice denial/recovery | Deny microphone/speech; useful error, Settings link and immediate typing fallback; enable permission and explicitly retry | Pending |

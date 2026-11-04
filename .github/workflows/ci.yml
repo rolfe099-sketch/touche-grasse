@@ -49,5 +49,6 @@ jobs:
             verification/ci
             verification/targets-support
             verification/iphone-readiness
+            verification/deletion
             apps/mobile/test-results
           retention-days: 7

@@ -1,6 +1,6 @@
 import Svg, { Path, Circle, Rect, G } from 'react-native-svg';
 import { colors } from './theme';
-export type IconName = 'today' | 'search' | 'book' | 'plus' | 'close' | 'back' | 'next' | 'repeat' | 'bookmark' | 'check' | 'settings' | 'camera' | 'minus' | 'calendar' | 'history' | 'bowl' | 'leaf' | 'brand' | 'mic' | 'type' | 'discover' | 'wave';
+export type IconName = 'today' | 'search' | 'book' | 'plus' | 'close' | 'back' | 'next' | 'repeat' | 'bookmark' | 'check' | 'settings' | 'camera' | 'minus' | 'calendar' | 'history' | 'bowl' | 'leaf' | 'brand' | 'mic' | 'type' | 'discover' | 'wave' | 'trash';
 
 // Compact, original pictograms on a shared 32-unit grid.
 export function Icon({ name, color = colors.action, size = 24 }: { name: IconName; color?: string; size?: number }) {
@@ -20,6 +20,7 @@ export function Icon({ name, color = colors.action, size = 24 }: { name: IconNam
     {name === 'camera' && <><Path d="M3 10V3h7v3H6v4Zm19-7h7v7h-3V6h-4ZM3 22h3v4h4v3H3Zm23 0h3v7h-7v-3h4Z" /><Path d="M9 9h3v14H9zm5 0h2v14h-2zm4 0h5v14h-5z" /></>}
     {name === 'search' && <><Path fillRule="evenodd" d="M14 3a11 11 0 1 0 0 22 11 11 0 0 0 0-22Zm0 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14Z" /><Path d="m20 23 3-3 8 8-3 3Z" /></>}
     <G fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+      {name === 'trash' && <><Path d="M6 9h20M12 9V5h8v4M9 9l1 18h12l1-18M14 14v8M18 14v8" strokeWidth={2} /></>}
       {name === 'plus' && <Path d="M16 6v20M6 16h20" strokeWidth={2.2} />}
       {name === 'minus' && <Path d="M7 16h18" />}
       {name === 'close' && <Path d="m8 8 16 16M24 8 8 24" />}

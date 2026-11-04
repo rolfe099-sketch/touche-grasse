@@ -20,6 +20,7 @@ Actual implementation screenshots using isolated test meals. This is an early de
 - **Nutrition:** calories, protein, carbohydrates, fat and fiber calculated with decimal arithmetic. Optional dated personal targets show remaining and over amounts without changing food calculations.
 - **Recipes and batches:** custom servings, optional measured cooked weight, logging by servings or grams, and finite saved portions for later days. Creating a batch does not log it as eaten.
 - **Today and History:** one-tap usual meals and saved portions, daily diary, corrections, daily/weekly/monthly/lifetime exploration.
+- **Delete and undo:** visible trash controls for entries and grouped meals. Deletion updates totals and saved-portion inventory; Undo restores exact snapshots and survives reopening. The next log/deletion replaces the single undo action; backup restoration clears a pending deletion undo.
 - **Local persistence:** SQLite on native, IndexedDB in browsers; retained drafts, immutable historical nutrition snapshots, validated JSON backup and merge restore.
 - **Unified entry:** typing, voice controls and barcode camera entry share one review. See the runtime limits below.
 
@@ -61,7 +62,7 @@ npm run test:e2e
 
 The browser suite tests parsing, corrections, learned matches, persistence, backup restore, targets, historical snapshots, repeat/undo, portions and layout at iPhone dimensions. Tests use isolated browser contexts and synthetic diaries built from the actual catalog. CI also runs the browser export and tests.
 
-Latest local verification (4 November 2026): **126 unit/storage tests, 35 Chromium browser tests and 3 WebKit iPhone-sized tests passed**; one historical baseline-capture test is intentionally skipped. TypeScript, ESLint and iOS JavaScript packaging passed. These are browser/source checks, not physical iPhone certification.
+Latest local verification (4 November 2026): **141 unit/storage tests, 39 Chromium browser tests and 7 WebKit iPhone-sized tests passed**; one historical baseline-capture test is intentionally skipped. TypeScript, ESLint and iOS JavaScript packaging passed. The owner also confirmed native launch, a real food log, repeat/undo, reopen persistence and entry deletion/undo on an iPhone 13 Pro. Native voice, camera and the remaining device checklist still need physical validation.
 
 The exported web app supports an offline reload after its first successful online load. Expo's development server does not install the service worker. Browser data belongs to its origin: different hosts and ports have separate libraries. Export/restore to transfer data, and keep backups before changing origins or clearing browser storage.
 

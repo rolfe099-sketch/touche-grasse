@@ -30,6 +30,72 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  it('deletes only chosen entries and restores exact corrected snapshots, unknowns and IDs', async () => {
+    const repo = await setup(await adapter()), draft = draftFor();
+    draft.lines[0].food = { ...oil, nutrition: { ...oil.nutrition, fiber: null } };
+    await repo.logDraft(draft, new Date('2026-10-05T12:00:00Z')); const id = repo.logs[0].id;
+    await repo.correctLog(id, { quantity: '20' }); await repo.logDraft(draftFor());
+    await repo.saveDraft(draftFor()); const before = JSON.parse(await repo.exportJSON()), entry = structuredClone(repo.logs.find(log => log.id === id)!);
+    await repo.deleteLogs([id]);
+    expect(JSON.parse(await repo.exportJSON())).toEqual({ ...before, logs: before.logs.filter((log: { id: string }) => log.id !== id) });
+    expect(repo.undoLabel).toBe('Undo deletion');
+    await repo.saveFood({ ...oil, nutrition: { ...oil.nutrition, kcal: '1' } });
+    await repo.undoLast(); expect(repo.logs.find(log => log.id === id)).toEqual(entry);
+    expect(entry.nutrition.kcal).toBe('178.4'); expect(entry.nutrition.fiber).toBeNull(); expect(repo.undo).toEqual([]);
+    await repo.close();
+  });
+  it('deletes a whole meal atomically, deduplicates selected IDs and rejects stale selections', async () => {
+    const repo = await setup(await adapter()), draft = draftFor();
+    draft.lines.push({ ...draft.lines[0], id: randomUUID(), quantityText: '20' });
+    await repo.logDraft(draft, new Date('2026-10-05T12:00:00Z')); const meal = structuredClone(repo.logs), ids = meal.map(log => log.id);
+    await repo.logDraft(draftFor()); const all = structuredClone(repo.logs);
+    await expect(repo.deleteLogs([ids[0], 'missing'])).rejects.toThrow('no longer available'); expect(repo.logs).toEqual(all);
+    await expect(repo.deleteLogs([])).rejects.toThrow('Choose');
+    await repo.deleteLogs([...ids, ids[0]]); expect(repo.logs).toHaveLength(1); expect(repo.undo).toHaveLength(2);
+    await repo.undoLast(); expect(repo.logs).toEqual(all); await repo.close();
+  });
+  it('keeps failed delete and restore writes from changing the diary or its undo action', async () => {
+    const storage = await adapter(); let fail = false;
+    const repo = await setup({ ...storage, commit: (changes, revision) => fail ? Promise.reject(new Error('simulated disk failure')) : storage.commit(changes, revision) });
+    await repo.logDraft(draftFor()); const before = structuredClone(repo.logs), originalUndo = [...repo.undo];
+    fail = true; await expect(repo.deleteLogs([before[0].id])).rejects.toThrow('disk failure');
+    expect(repo.logs).toEqual(before); expect(repo.undo).toEqual(originalUndo); expect(repo.isDeletionUndo).toBe(false);
+    fail = false; await repo.deleteLogs([before[0].id]);
+    fail = true; await expect(repo.undoLast()).rejects.toThrow('disk failure'); expect(repo.logs).toEqual([]); expect(repo.isDeletionUndo).toBe(true);
+    fail = false; await repo.undoLast(); expect(repo.logs).toEqual(before); await repo.close();
+  });
+  it('replaces deletion undo with the next log for every logging path', async () => {
+    for (const kind of ['draft', 'repeat', 'recipe', 'portion']) {
+      const storage = await adapter(), repo = await setup(storage);
+      await repo.logDraft(draftFor()); const deleted = repo.logs[0]; await repo.logDraft(draftFor()); const surviving = repo.logs.find(log => log.id !== deleted.id)!;
+      await repo.deleteLogs([deleted.id]);
+      const recipe: Recipe = { id: randomUUID(), name: 'Test batch', ingredients: [{ id: randomUUID(), food: oil, quantity: '60', unit: 'g' }], servings: '6', cookedWeightGrams: null, steps: [], favorite: false };
+      if (kind === 'draft') await repo.logDraft(draftFor());
+      else if (kind === 'repeat') await repo.repeat(surviving);
+      else if (kind === 'recipe') await repo.logRecipe(recipe);
+      else { const batch = await repo.createPreparedBatch(recipe); await repo.logPreparedBatch(batch.id); }
+      const reopened = await setup(storage); expect(reopened.undoLabel).toBe('Undo last log');
+      await reopened.undoLast(); expect(reopened.logs).toEqual([surviving]); expect(reopened.logs.some(log => log.id === deleted.id)).toBe(false); await reopened.close();
+    }
+  });
+  it('returns deleted servings to inventory and refuses an undo that would overdraw a corrected batch', async () => {
+    const repo = await setup(await adapter());
+    const recipe: Recipe = { id: randomUUID(), name: 'Finite batch', ingredients: [{ id: randomUUID(), food: oil, quantity: '60', unit: 'g' }], servings: '6', cookedWeightGrams: null, steps: [], favorite: false };
+    const batch = await repo.createPreparedBatch(recipe), first = await repo.logPreparedBatch(batch.id), second = await repo.logPreparedBatch(batch.id, '2');
+    await repo.deleteLogs([first.id]); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('4');
+    await repo.correctLog(second.id, { quantity: '6' }); await expect(repo.undoLast()).rejects.toThrow('exceeds');
+    expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('0'); expect(repo.isDeletionUndo).toBe(true);
+    await repo.correctLog(second.id, { quantity: '2' }); await repo.undoLast();
+    expect(repo.logs.find(log => log.id === first.id)).toEqual(first); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('3'); await repo.close();
+  });
+  it('exports only active entries and clears deletion undo when merging a backup', async () => {
+    const storage = await adapter(), repo = await setup(storage); await repo.logDraft(draftFor());
+    const before = await repo.exportJSON(), original = structuredClone(repo.logs);
+    await repo.deleteLogs([original[0].id]); const backup = JSON.parse(await repo.exportJSON()); expect(backup.logs).toEqual([]);
+    const fresh = await setup(await adapter()); await fresh.restoreJSON(JSON.stringify(backup)); expect(fresh.undo).toEqual([]); expect(fresh.logs).toEqual([]);
+    await repo.restoreJSON(before); expect(repo.logs).toEqual(original); expect(repo.undo).toEqual([]);
+    const reopened = await setup(storage); expect(reopened.isDeletionUndo).toBe(false); await fresh.close(); await reopened.close();
+  });
   it('persists dated targets, preserves food snapshots and restores optional target history safely', async () => {
     const storage = await adapter(), repo = await setup(storage);
     await repo.logDraft(draftFor()); const logs = structuredClone(repo.logs);
@@ -331,6 +397,19 @@ describe('disk persistence and migrations', () => {
     await expect(storage.commit([put('food', 'first', {}), put('log', 'fails', {})], 0)).rejects.toThrow();
     expect((await storage.load()).records).toHaveLength(0); expect((await storage.load()).revision).toBe(0); await storage.close();
   });
+  it('rolls back native diary deletion if writing its undo snapshot fails inside the transaction', async () => {
+    const db = new DatabaseSync(':memory:'), storage = await openSQLStorage(driver(db)), repo = await setup(storage);
+    await repo.logDraft(draftFor()); const original = structuredClone(repo.logs), undo = [...repo.undo];
+    db.exec("CREATE TRIGGER fail_deletion BEFORE INSERT ON records WHEN new.kind='deletionUndo' AND new.payload<>'[]' BEGIN SELECT RAISE(ABORT,'simulated undo write failure'); END;");
+    await expect(repo.deleteLogs([original[0].id])).rejects.toThrow('undo write failure');
+    expect(repo.logs).toEqual(original); expect(repo.undo).toEqual(undo);
+    expect((await storage.load()).records.filter(record => record.kind === 'log').map(record => record.value)).toEqual(original);
+    db.exec('DROP TRIGGER fail_deletion'); await repo.deleteLogs([original[0].id]);
+    db.exec("CREATE TRIGGER fail_restore BEFORE INSERT ON records WHEN new.kind='log' BEGIN SELECT RAISE(ABORT,'simulated restore failure'); END;");
+    await expect(repo.undoLast()).rejects.toThrow('restore failure'); expect(repo.logs).toEqual([]); expect(repo.isDeletionUndo).toBe(true);
+    expect((await storage.load()).records.filter(record => record.kind === 'log')).toEqual([]);
+    db.exec('DROP TRIGGER fail_restore'); await repo.undoLast(); expect(repo.logs).toEqual(original); await repo.close();
+  });
 });
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) it(`reopens saved portions and a persisted split draft on ${platform}`, async () => {
@@ -348,5 +427,19 @@ for (const platform of ['IndexedDB', 'SQLite'] as const) it(`reopens saved porti
     await reopened.close();
   } finally {
     if (folder) { if (!path.resolve(folder).startsWith(path.resolve(tmpdir()) + path.sep + 'tg-portions-')) throw new Error('Unexpected cleanup path'); rmSync(folder, { recursive: true }); }
+  }
+});
+
+for (const platform of ['IndexedDB', 'SQLite'] as const) it(`reopens a deleted diary entry and restores its exact snapshot on ${platform}`, async () => {
+  const name = randomUUID(), folder = platform === 'SQLite' ? mkdtempSync(path.join(tmpdir(), 'tg-delete-')) : null;
+  const open = () => platform === 'IndexedDB' ? openBrowserStorage(name) : openSQLStorage(driver(new DatabaseSync(path.join(folder!, 'library.sqlite'))));
+  try {
+    const repo = await setup(await open()); await repo.logDraft(draftFor()); await repo.correctLog(repo.logs[0].id, { quantity: '20' });
+    const original = structuredClone(repo.logs[0]); await repo.deleteLogs([original.id]); await repo.close();
+    const reopened = await setup(await open()); expect(reopened.logs).toEqual([]); expect(reopened.undoLabel).toBe('Undo deletion');
+    await reopened.undoLast(); expect(reopened.logs).toEqual([original]); await reopened.close();
+    const final = await setup(await open()); expect(final.logs).toEqual([original]); expect(final.undo).toEqual([]); await final.close();
+  } finally {
+    if (folder) { if (!path.resolve(folder).startsWith(path.resolve(tmpdir()) + path.sep + 'tg-delete-')) throw new Error('Unexpected cleanup path'); rmSync(folder, { recursive: true }); }
   }
 });
