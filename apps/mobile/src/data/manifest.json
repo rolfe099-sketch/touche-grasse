@@ -1,0 +1,10 @@
+{
+  "count": 2121,
+  "capturedOn": "2026-10-22",
+  "source": "Packages\\ToucheGrasseCore\\Sources\\ToucheGrasseCore\\Resources\\catalog.json",
+  "fiberSource": "Fixtures\\matvaretabellen-foods-nb.json",
+  "fiberSourceSHA256": "7c7ebb52109433ea15032a29f495843a5da229313bbcf4a4fe7ebcc45b9c9b33",
+  "sourceSHA256": "1ed38036045fc5b3e979d359e470e6b8ad3311a674054dd555ae0c6087763be2",
+  "catalogSHA256": "f3c4c9e7cdfd2275c9c184372075a4bea8352c0269156d74130c572e1dd18414",
+  "change": "Nutrient numbers serialized as decimal strings; original nutrients, names, IDs, aliases, units and provenance preserved; dietary fiber and its source ID added from the same official capture."
+}

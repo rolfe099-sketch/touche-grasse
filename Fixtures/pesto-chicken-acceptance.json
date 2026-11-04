@@ -1,0 +1,27 @@
+{
+  "status": "Milestone 2 acceptance specification. Quantities supplied by owner; nutrition deliberately absent. Not seeded into the app.",
+  "name": "Creamy Pesto Chicken Pasta Bake",
+  "servings": 6,
+  "cookedWeightGrams": null,
+  "ingredients": [
+    {"name": "Chicken breast strips", "grams": 1200, "preparation": "raw", "foodID": null},
+    {"name": "Pasta", "grams": 400, "preparation": "dry", "foodID": null},
+    {"name": "Green pesto", "grams": 140, "foodID": null},
+    {"name": "Crème fraîche", "grams": 200, "foodID": null},
+    {"name": "Sun-dried tomatoes", "grams": 100, "preparation": "drained", "foodID": null},
+    {"name": "Mozzarella", "grams": 125, "foodID": null},
+    {"name": "Parmesan", "grams": 40, "foodID": null},
+    {"name": "Chicken stock and seasonings", "grams": null, "foodID": null}
+  ],
+  "acceptance": [
+    "Resolve each ingredient explicitly to an appropriate real source or user-provided record",
+    "Keep stock and seasonings unresolved until quantities and records are supplied",
+    "Changing pesto to 150 g preserves every other quantity",
+    "One serving uses total divided by six",
+    "A gram portion requires finished cooked batch weight",
+    "Cooking water loss changes density, not total energy",
+    "Duplicate recipe has new identity and independent edits",
+    "Past logs remain unchanged after recipe or product edits",
+    "Oil added and oil consumed are separate explicit quantities; no absorption assumption"
+  ]
+}

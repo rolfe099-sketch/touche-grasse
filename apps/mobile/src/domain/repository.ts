@@ -1,0 +1,304 @@
+import { z } from 'zod';
+import { Change, put, StorageAdapter } from '../storage/contract';
+import { D, dayKey, Draft, draftSchema, duplicateRecipe, emptyDraft, Food, foodSchema, IdFactory, lineIngredient, LogEntry, logSchema, Meal, Recipe, recipePortion, recipeSchema, recipeTotal, snapshotNutrition, structuredCopy, validateFood, nutrients, profileSchema, recipeDraftSchema, Unit, PreparedBatch, preparedBatchSchema } from './model';
+import { assertBatchCapacity, validateBatch, portionFits } from './portions';
+import { FoodIndex, normalize } from './search';
+import { emptyPreferences, liveTextIsCurrent, quickEntrySchema, QuickEntryPreferences } from './quickEntry';
+import { TargetChange, targetChangeSchema, TargetValues, targetValuesSchema } from './targets';
+
+const archiveSchema = z.object({ format: z.literal('touche-grasse'), version: z.literal(2), foods: z.array(foodSchema).max(20000), logs: z.array(logSchema).max(100000), recipes: z.array(recipeSchema).max(10000), draft: draftSchema, profile: profileSchema.optional(), recipeDrafts: z.record(z.string(), recipeDraftSchema).optional(), quickEntry: quickEntrySchema.optional(), preparedBatches: z.array(preparedBatchSchema).max(20000).optional(), targets: z.array(targetChangeSchema).max(20000).optional() });
+function utf8Size(value: string) {
+  let bytes = 0;
+  for (const char of value) { const point = char.codePointAt(0)!; bytes += point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4; }
+  return bytes;
+}
+export class Repository {
+  readonly index = new FoodIndex();
+  targets: TargetChange[] = [];
+  private catalogFoods = new Map<string, Food>();
+  foods: Food[] = [];
+  preparedBatches: PreparedBatch[] = [];
+  logs: LogEntry[] = [];
+  recipes: Recipe[] = [];
+  draft: Draft;
+  undo: string[] = [];
+  profile = { firstUsedAt: new Date().toISOString() };
+  recipeDrafts: Record<string, z.infer<typeof recipeDraftSchema>> = {};
+  quickEntry: QuickEntryPreferences = emptyPreferences();
+  private revision = 0;
+  private queue: Promise<unknown> = Promise.resolve();
+  constructor(private storage: StorageAdapter, readonly id: IdFactory) { this.draft = emptyDraft(id); }
+  async initialize(catalog: Food[], yieldToUI = () => new Promise<void>(resolve => setTimeout(resolve, 0))) {
+    this.catalogFoods = new Map(catalog.map(food => [food.id, food]));
+    for (let i = 0; i < catalog.length; i += 100) {
+      catalog.slice(i, i + 100).forEach(f => this.index.add(f));
+      await yieldToUI();
+    }
+    const loaded = await this.storage.load();
+    this.revision = loaded.revision;
+    for (const record of loaded.records) {
+      if (record.kind === 'food') this.foods.push(validateFood(foodSchema.parse(record.value)));
+      else if (record.kind === 'log') this.logs.push(logSchema.parse(record.value));
+      else if (record.kind === 'recipe') this.recipes.push(recipeSchema.parse(record.value));
+      else if (record.kind === 'draft') this.draft = draftSchema.parse(record.value);
+      else if (record.kind === 'undo') this.undo = z.array(z.string()).parse(record.value);
+      else if (record.kind === 'profile') this.profile = profileSchema.parse(record.value);
+      else if (record.kind === 'recipeDraft') this.recipeDrafts[record.id] = recipeDraftSchema.parse(record.value);
+      else if (record.kind === 'preparedBatch') this.preparedBatches.push(validateBatch(record.value as PreparedBatch));
+      else if (record.kind === 'quickEntry') this.quickEntry = quickEntrySchema.parse(record.value);
+      else if (record.kind === 'targetChange') this.targets.push(targetChangeSchema.parse(record.value));
+    }
+    const earliest = [this.profile.firstUsedAt, ...this.logs.flatMap(log => [log.recordedAt, ...(log.corrections ?? []).map(c => c.previous.recordedAt)])].sort()[0];
+    if (!loaded.records.some(record => record.kind === 'profile') || earliest !== this.profile.firstUsedAt) await this.commit([put('profile', 'identity', { firstUsedAt: earliest })]);
+    assertBatchCapacity(this.preparedBatches, this.logs);
+    this.sortAndIndex();
+  }
+  private sortAndIndex() {
+    this.logs.sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+    // Enrich only new selections of an unchanged official record. Never mutate
+    // saved foods, drafts, recipes, prepared batches or historical snapshots.
+    const selections = this.foods.map(food => {
+      const official = this.catalogFoods.get(food.id);
+      if (food.nutrition.fiber !== undefined || !official || food.provenance.source !== 'matvaretabellen' ||
+        food.provenance.sourceID !== official.provenance.sourceID || food.provenance.retrievedAt !== official.provenance.retrievedAt ||
+        food.referenceUnit !== official.referenceUnit || food.name !== official.name ||
+        !['kcal', 'protein', 'carbohydrate', 'fat'].every(key => food.nutrition[key as keyof Food['nutrition']] === official.nutrition[key as keyof Food['nutrition']])) return food;
+      return { ...food, nutrition: { ...food.nutrition, fiber: official.nutrition.fiber }, provenance: { ...food.provenance, nutrientSources: { ...food.provenance.nutrientSources, fiber: official.provenance.nutrientSources.fiber } } };
+    });
+    this.index.setPersonal(selections, this.logs, this.quickEntry.favorites, this.quickEntry.matches);
+  }
+  private serialized<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(task);
+    this.queue = result.catch(() => undefined);
+    return result;
+  }
+  private async commit(changes: Change[]) {
+    const dates = [this.profile.firstUsedAt];
+    for (const change of changes) if (change.type === 'put') {
+      if (change.record.kind === 'log') { const log = change.record.value as LogEntry; dates.push(log.recordedAt, ...(log.corrections ?? []).map(c => c.previous.recordedAt)); }
+      if (change.record.kind === 'profile') dates.push(profileSchema.parse(change.record.value).firstUsedAt);
+    }
+    const profile = { firstUsedAt: dates.sort()[0] };
+    const batch = [...changes.filter(change => change.type !== 'put' || change.record.kind !== 'profile'), put('profile', 'identity', profile)];
+    this.revision = await this.storage.commit(batch, this.revision); this.profile = profile;
+  }
+  private checkBarcodes(foods: Food[]) {
+    const map = new Map<string, string>();
+    for (const food of foods) if (food.barcode) {
+      const existing = map.get(food.barcode);
+      if (existing && existing !== food.id) throw new Error('This barcode is already linked to another food.');
+      map.set(food.barcode, food.id);
+    }
+  }
+  saveFood(input: Food) {
+    const food = validateFood(structuredCopy(input));
+    return this.serialized(async () => {
+      const foods = [...this.foods.filter(f => f.id !== food.id), food]; this.checkBarcodes(foods);
+      await this.commit([put('food', food.id, food)]);
+      this.foods = foods; this.sortAndIndex();
+    });
+  }
+  saveDraft(input: Draft) {
+    const draft = draftSchema.parse(structuredCopy(input));
+    return this.serialized(async () => { await this.commit([put('draft', 'active', draft)]); this.draft = draft; });
+  }
+  saveTargets(input: TargetValues, at = new Date()) {
+    const values = targetValuesSchema.parse(structuredCopy(input));
+    const effectiveOn = dayKey(at);
+    return this.serialized(async () => {
+      // Keep every revision; same-day saves have an unambiguous order even within one millisecond.
+      const latest = Math.max(0, ...this.targets.map(change => Date.parse(change.recordedAt)));
+      const change = targetChangeSchema.parse({ id: this.id(), effectiveOn, recordedAt: new Date(Math.max(at.getTime(), latest + 1)).toISOString(), values });
+      await this.commit([put('targetChange', change.id, change)]);
+      this.targets = [...this.targets, change];
+      return change;
+    });
+  }
+  saveEntryMethod(entryMethod: 'text' | 'voice' | 'scan') {
+    return this.serialized(async () => {
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, entryMethod });
+      await this.commit([put('quickEntry', 'preferences', preferences)]);
+      this.quickEntry = preferences;
+    });
+  }
+  toggleFavorite(food: Food) {
+    const copy = validateFood(structuredCopy(food));
+    return this.serialized(async () => {
+      const favorites = this.quickEntry.favorites.includes(copy.id) ? this.quickEntry.favorites.filter(id => id !== copy.id) : [...this.quickEntry.favorites, copy.id];
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, favorites });
+      const foods = [...this.foods.filter(f => f.id !== copy.id), copy]; this.checkBarcodes(foods);
+      await this.commit([put('food', copy.id, copy), put('quickEntry', 'preferences', preferences)]);
+      this.foods = foods; this.quickEntry = preferences; this.sortAndIndex();
+    });
+  }
+  logDraft(input: Draft, at = new Date()) {
+    const draft = draftSchema.parse(structuredCopy(input));
+    return this.serialized(async () => {
+      if (this.preparedBatches.some(batch => batch.id === draft.id)) throw new Error('This meal was saved as a batch. Log a portion from Saved portions.');
+      if (!draft.lines.length || !liveTextIsCurrent(draft)) throw new Error('Wait for every ingredient to appear and check the highlighted rows before logging.');
+      if (new Set(draft.lines.map(l => l.id)).size !== draft.lines.length) throw new Error('This meal contains duplicate rows.');
+      const entries: LogEntry[] = draft.lines.map(line => {
+        const snapshot: LogEntry['snapshot'] = { kind: 'food', ingredient: lineIngredient(line) };
+        return { id: line.id, batchId: draft.id, recordedAt: at.toISOString(), meal: draft.meal, snapshot, nutrition: snapshotNutrition(snapshot) };
+      });
+      const fresh = entries.filter(e => !this.logs.some(l => l.id === e.id));
+      if (!fresh.length) return;
+      const foodMap = new Map(this.foods.map(f => [f.id, f]));
+      draft.lines.forEach(line => foodMap.set(line.food!.id, line.food!));
+      const foods = [...foodMap.values()]; this.checkBarcodes(foods);
+      const nextDraft = emptyDraft(this.id), ids = fresh.map(e => e.id);
+      const matches = { ...this.quickEntry.matches };
+      // Log is the user's confirmation of the complete review. Last correction
+      // wins. A cancelled draft or failed transaction never teaches a match.
+      for (const line of draft.lines) if (normalize(line.query)) matches[normalize(line.query)] = { foodId: line.food!.id, confirmedAt: at.toISOString() };
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, matches });
+      await this.commit([...draft.lines.map(l => put('food', l.food!.id, l.food)), ...fresh.map(e => put('log', e.id, e)), put('draft', 'active', nextDraft), put('undo', 'latest', ids), put('quickEntry', 'preferences', preferences)]);
+      this.quickEntry = preferences;
+      this.foods = foods; this.logs = [...this.logs, ...fresh]; this.draft = nextDraft; this.undo = ids; this.sortAndIndex();
+    });
+  }
+  repeat(entry: LogEntry, at = new Date()) {
+    return this.repeatMeal([entry.id], at);
+  }
+  repeatMeal(entryIds: string[], at = new Date()) {
+    const ids = [...new Set(entryIds)];
+    return this.serialized(async () => {
+      if (!ids.length || ids.length > 200) throw new Error('Choose a meal with 1–200 entries.');
+      const batchId = this.id();
+      const logs = ids.map(id => {
+        const entry = this.logs.find(log => log.id === id);
+        if (!entry) throw new Error('This meal is no longer available.');
+        const snapshot = structuredCopy(entry.snapshot);
+        return logSchema.parse({ ...entry, snapshot, nutrition: snapshotNutrition(snapshot), id: this.id(), batchId, recordedAt: at.toISOString(), corrections: undefined });
+      });
+      assertBatchCapacity(this.preparedBatches, [...this.logs, ...logs]);
+      const undo = logs.map(log => log.id);
+      await this.commit([...logs.map(log => put('log', log.id, log)), put('undo', 'latest', undo)]);
+      this.logs = [...this.logs, ...logs]; this.undo = undo; this.sortAndIndex();
+    });
+  }
+  undoLast() {
+    return this.serialized(async () => {
+      const ids = new Set(this.undo);
+      await this.commit([...this.undo.map(id => ({ type: 'delete' as const, key: `log:${id}` })), put('undo', 'latest', [])]);
+      this.logs = this.logs.filter(l => !ids.has(l.id)); this.undo = []; this.sortAndIndex();
+    });
+  }
+  correctLog(id: string, patch: { quantity: string; unit?: Unit | 'servings'; recordedAt?: string; meal?: Meal }) {
+    return this.serialized(async () => {
+      const entry = this.logs.find(log => log.id === id);
+      if (!entry) throw new Error('This entry is no longer available.');
+      if ((entry.corrections?.length ?? 0) >= 200) throw new Error('This entry has reached its correction limit.');
+      const snapshot = structuredCopy(entry.snapshot);
+      if (snapshot.kind === 'food') {
+        if (patch.unit === 'servings') throw new Error('Choose a food quantity unit.');
+        snapshot.ingredient.quantity = patch.quantity; snapshot.ingredient.unit = patch.unit ?? snapshot.ingredient.unit;
+      } else {
+        if (patch.unit && patch.unit !== 'g' && patch.unit !== 'servings') throw new Error('Choose grams or servings for a recipe.');
+        snapshot.quantity = patch.quantity; snapshot.unit = patch.unit ?? snapshot.unit;
+      }
+      const previous = { recordedAt: entry.recordedAt, meal: entry.meal, snapshot: entry.snapshot, nutrition: entry.nutrition };
+      const corrected = logSchema.parse({ ...entry, recordedAt: patch.recordedAt ?? entry.recordedAt, meal: patch.meal ?? entry.meal, snapshot, nutrition: snapshotNutrition(snapshot), corrections: [...(entry.corrections ?? []), { correctedAt: new Date().toISOString(), previous }] });
+      assertBatchCapacity(this.preparedBatches, this.logs.map(log => log.id === id ? corrected : log));
+      await this.commit([put('log', id, corrected)]);
+      this.logs = this.logs.map(log => log.id === id ? corrected : log); this.sortAndIndex();
+    });
+  }
+  saveRecipeDraft(key: string, input: z.infer<typeof recipeDraftSchema>) {
+    const value = recipeDraftSchema.parse(structuredCopy(input));
+    return this.serialized(async () => { await this.commit([put('recipeDraft', key, value)]); this.recipeDrafts[key] = value; });
+  }
+  saveRecipe(input: Recipe, draftKey?: string) {
+    const recipe = recipeSchema.parse(structuredCopy(input)); recipeTotal(recipe);
+    return this.serialized(async () => {
+      await this.commit([put('recipe', recipe.id, recipe), ...(draftKey ? [{ type: 'delete' as const, key: `recipeDraft:${draftKey}` }] : [])]);
+      this.recipes = [...this.recipes.filter(r => r.id !== recipe.id), recipe];
+      if (draftKey) delete this.recipeDrafts[draftKey];
+    });
+  }
+  duplicate(recipe: Recipe) { return this.saveRecipe(duplicateRecipe(recipe, this.id)); }
+  logRecipe(recipe: Recipe, quantity = '1', unit: 'servings' | 'g' = 'servings', meal: Meal = 'Middag') {
+    const log: LogEntry = { id: this.id(), batchId: this.id(), recordedAt: new Date().toISOString(), meal,
+      snapshot: { kind: 'recipe', recipe: { ...structuredCopy(recipe), photo: undefined }, quantity, unit }, nutrition: recipePortion(recipe, quantity, unit) };
+    return this.serialized(async () => {
+      await this.commit([put('log', log.id, log), put('undo', 'latest', [log.id])]);
+      this.logs = [...this.logs, log]; this.undo = [log.id]; this.sortAndIndex();
+    });
+  }
+  createPreparedBatch(recipe: Recipe, meal: Meal = 'Middag', batchId = this.id()) {
+    const batch = validateBatch({ id: batchId, createdAt: new Date().toISOString(), meal, recipe: { ...structuredCopy(recipe), photo: undefined } });
+    return this.serialized(async () => {
+      const existing = this.preparedBatches.find(b => b.id === batch.id); if (existing) return existing;
+      await this.commit([put('preparedBatch', batch.id, batch)]);
+      this.preparedBatches = [...this.preparedBatches, batch]; return batch;
+    });
+  }
+  createBatchFromDraft(input: Draft, name: string, servings: string, cookedWeightGrams: string | null) {
+    const draft = draftSchema.parse(structuredCopy(input));
+    return this.serialized(async () => {
+      const existing = this.preparedBatches.find(batch => batch.id === draft.id); if (existing) return existing;
+      if (this.logs.some(log => log.batchId === draft.id)) throw new Error('This meal was already logged. Start a new batch.');
+      if (!draft.lines.length || !liveTextIsCurrent(draft)) throw new Error('Resolve every ingredient before saving a batch.');
+      const recipe: Recipe = { id: 'prepared:' + draft.id, name: name.trim() || 'Meal prep', ingredients: draft.lines.map(lineIngredient), servings, cookedWeightGrams, steps: [], favorite: false };
+      const batch = validateBatch({ id: draft.id, createdAt: new Date().toISOString(), meal: draft.meal, recipe });
+      const foods = [...new Map([...this.foods, ...draft.lines.map(line => line.food!)].map(food => [food.id, food])).values()]; this.checkBarcodes(foods);
+      const matches = { ...this.quickEntry.matches };
+      for (const line of draft.lines) if (normalize(line.query)) matches[normalize(line.query)] = { foodId: line.food!.id, confirmedAt: batch.createdAt };
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, matches }), nextDraft = emptyDraft(this.id);
+      await this.commit([put('preparedBatch', batch.id, batch), ...draft.lines.map(line => put('food', line.food!.id, line.food)), put('quickEntry', 'preferences', preferences), put('draft', 'active', nextDraft)]);
+      this.preparedBatches = [...this.preparedBatches, batch]; this.foods = foods; this.quickEntry = preferences; this.draft = nextDraft; this.sortAndIndex(); return batch;
+    });
+  }
+  logPreparedBatch(id: string, quantity = '1', unit: 'servings' | 'g' = 'servings', at = new Date(), meal?: Meal) {
+    return this.serialized(async () => {
+      const batch = this.preparedBatches.find(batch => batch.id === id); if (!batch) throw new Error('This saved batch is unavailable.');
+      portionFits(batch, this.logs, quantity, unit);
+      const snapshot: LogEntry['snapshot'] = { kind: 'recipe', recipe: structuredCopy(batch.recipe), quantity, unit };
+      const log = logSchema.parse({ id: this.id(), batchId: this.id(), preparedBatchId: id, recordedAt: at.toISOString(), meal: meal ?? batch.meal, snapshot, nutrition: snapshotNutrition(snapshot) });
+      await this.commit([put('log', log.id, log), put('undo', 'latest', [log.id])]);
+      this.logs = [...this.logs, log]; this.undo = [log.id]; this.sortAndIndex(); return log;
+    });
+  }
+  async exportJSON() {
+    await this.queue;
+    const json = JSON.stringify({ format: 'touche-grasse', version: 2, profile: this.profile, foods: this.foods, logs: this.logs, recipes: this.recipes, draft: this.draft, recipeDrafts: this.recipeDrafts, quickEntry: this.quickEntry, preparedBatches: this.preparedBatches, targets: this.targets }, null, 2);
+    if (utf8Size(json) > 50_000_000) throw new Error('This backup exceeds 50 MB. Remove or reduce recipe photos before exporting.');
+    return json;
+  }
+  restoreJSON(json: string) {
+    if (json.length > 50_000_000 || utf8Size(json) > 50_000_000) throw new Error('This backup is too large.');
+    const backup = archiveSchema.parse(JSON.parse(json));
+    (backup.preparedBatches ?? []).forEach(validateBatch);
+    backup.foods.forEach(validateFood); backup.recipes.forEach(recipeTotal);
+    backup.logs.flatMap(log => [log, ...(log.corrections ?? []).map(c => c.previous)]).forEach(log => {
+      const computed = snapshotNutrition(log.snapshot);
+      for (const key of nutrients) {
+        const a = computed[key], b = log.nutrition[key];
+        if ((a == null) !== (b == null) || (a != null && b != null && !new D(a).eq(b))) throw new Error('The backup contains an invalid nutrition calculation.');
+      }
+    });
+    for (const items of [backup.foods, backup.logs, backup.recipes, backup.preparedBatches ?? [], backup.targets ?? []]) if (new Set(items.map(i => i.id)).size !== items.length) throw new Error('The backup contains duplicate identities.');
+    return this.serialized(async () => {
+      const merge = <T extends { id: string }>(a: T[], b: T[]) => [...new Map([...a, ...b].map(value => [value.id, value])).values()];
+      const foods = merge(this.foods, backup.foods); this.checkBarcodes(foods);
+      const recipes = merge(this.recipes, backup.recipes);
+      // Existing historical entries win, regardless of what the incoming archive says.
+      const logs = merge(backup.logs, this.logs);
+      const preparedBatches = merge(backup.preparedBatches ?? [], this.preparedBatches);
+      // Local target history wins for dates already present; restored targets fill missing dates.
+      const localDates = new Set(this.targets.map(change => change.effectiveOn));
+      const targets = merge((backup.targets ?? []).filter(change => !localDates.has(change.effectiveOn)), this.targets);
+      assertBatchCapacity(preparedBatches, logs);
+      const draft = this.draft.lines.length || this.draft.text || this.draft.recipeName || this.draft.splitPlan ? this.draft : backup.draft;
+      const recipeDrafts = { ...backup.recipeDrafts, ...this.recipeDrafts };
+      const matches = { ...backup.quickEntry?.matches };
+      for (const [query, match] of Object.entries(this.quickEntry.matches)) if (!matches[query] || matches[query].confirmedAt <= match.confirmedAt) matches[query] = match;
+      const preferences = quickEntrySchema.parse({ entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
+      await this.commit([...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : [])]);
+      this.targets = targets; this.quickEntry = preferences; this.preparedBatches = preparedBatches;
+      this.foods = foods; this.recipes = recipes; this.logs = logs; this.draft = draft; this.sortAndIndex();
+      this.recipeDrafts = recipeDrafts;
+    });
+  }
+  async close() { await this.queue; await this.storage.close(); }
+}

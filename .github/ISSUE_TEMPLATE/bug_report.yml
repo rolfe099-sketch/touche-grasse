@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a reproducible problem
+body:
+  - type: markdown
+    attributes:
+      value: "Do not attach personal backups, diary data, recordings or credentials."
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use an example meal or public food ID where possible.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Device, OS, browser or Expo runtime
+    validations:
+      required: true

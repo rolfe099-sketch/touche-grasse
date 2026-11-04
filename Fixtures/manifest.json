@@ -1,0 +1,21 @@
+{
+  "capturedOn": "2026-10-22",
+  "foodCount": 2121,
+  "attribution": "Matvaretabellen \u2014 Mattilsynet",
+  "documentation": "https://www.matvaretabellen.no/api/",
+  "files": {
+    "matvaretabellen-foods-nb.json": {
+      "url": "https://www.matvaretabellen.no/api/nb/foods.json",
+      "sha256": "7c7ebb52109433ea15032a29f495843a5da229313bbcf4a4fe7ebcc45b9c9b33"
+    },
+    "matvaretabellen-foods-en.json": {
+      "url": "https://www.matvaretabellen.no/api/en/foods.json",
+      "sha256": "89b8f5f494a79731bf7d8d98065ee66c55263ccdbb519e7c87941218be6c948d"
+    },
+    "matvaretabellen-nutrients-nb.json": {
+      "url": "https://www.matvaretabellen.no/api/nb/nutrients.json",
+      "sha256": "776047e991d24ef2532b9aefb88cc26f244e37696bd1d168df0b04205dd689ff"
+    }
+  },
+  "catalogSHA256": "1ed38036045fc5b3e979d359e470e6b8ad3311a674054dd555ae0c6087763be2"
+}

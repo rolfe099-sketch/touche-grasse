@@ -1,0 +1,9 @@
+{
+  "status": "Synthetic OCR input fixtures only. No OCR parser is implemented yet. Never import as food data.",
+  "cases": [
+    {"id": "norwegian-decimal-comma", "text": "Næringsinnhold per 100 g\nEnergi 1680 kJ / 400 kcal\nFett 40 g\nHvorav mettede fettsyrer 6,5 g\nKarbohydrat 8 g\nHvorav sukkerarter 2,5 g\nProtein 4 g\nSalt 1,2 g", "expect": "Explicit per-100-g basis, retain decimal commas, review before save"},
+    {"id": "two-columns", "text": "Per 100 g | Per porsjon 30 g\nEnergy 400 kcal | 120 kcal\nFat 20 g | 6 g", "expect": "Require column alignment and basis selection; never merge columns"},
+    {"id": "volume-and-sodium", "text": "Nutrition information per 100 ml\nEnergy 200 kJ / 48 kcal\nSodium 40 mg", "expect": "Keep ml basis. Explicit sodium converts to 0.1 g salt; annotate derivation and require confirmation"},
+    {"id": "missing-and-implausible", "text": "Per serving\nEnergy 9O kcal\nFat 180 g\nProtein ?", "expect": "Unknown serving size and uncertain OCR block normalized saving; missing protein stays null"}
+  ]
+}

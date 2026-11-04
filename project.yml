@@ -1,0 +1,53 @@
+name: ToucheGrasse
+options:
+  minimumXcodeGenVersion: 2.44.0
+  bundleIdPrefix: local.touchegrasse
+  deploymentTarget:
+    iOS: '17.0'
+  developmentLanguage: nb
+packages:
+  ToucheGrasseCore:
+    path: Packages/ToucheGrasseCore
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    SWIFT_STRICT_CONCURRENCY: complete
+    IPHONEOS_DEPLOYMENT_TARGET: '17.0'
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: '1'
+targets:
+  ToucheGrasse:
+    type: application
+    platform: iOS
+    sources:
+      - path: ToucheGrasse
+    dependencies:
+      - package: ToucheGrasseCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: local.touchegrasse.app
+        TARGETED_DEVICE_FAMILY: '1'
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Touche Grasse
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIUserInterfaceStyle: Light
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+  ToucheGrasseUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [ToucheGrasseUITests]
+    dependencies:
+      - target: ToucheGrasse
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  ToucheGrasse:
+    build:
+      targets:
+        ToucheGrasse: all
+    test:
+      targets:
+        - ToucheGrasseUITests
+        - package: ToucheGrasseCore/ToucheGrasseCoreTests

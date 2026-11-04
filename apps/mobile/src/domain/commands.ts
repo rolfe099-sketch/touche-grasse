@@ -1,0 +1,47 @@
+import { Draft, IdFactory, parseAmount } from './model';
+import { ingredientText, spokenNumbers } from './naturalInput';
+import { editLiveLine, QuickEntryPreferences, updateLiveText } from './quickEntry';
+import { FoodIndex, normalize } from './search';
+
+export type MealCommand = { kind: 'draft'; draft: Draft; message: string } | { kind: 'log' } | { kind: 'recipe' } | { kind: 'repeat' } | { kind: 'portion'; name: string; quantity: string };
+export function applyCommand(input: string, draft: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory): MealCommand {
+  const text = spokenNumbers(input).trim().replace(/[.!?]+$/, '');
+  if (!text) throw new Error('Say or type a command first.');
+  if (/^(log|save) (it|this|meal|this meal)( now| today)?$/i.test(text)) return { kind: 'log' };
+  if (/^(repeat|log) (my |the )?last meal$/i.test(text)) return { kind: 'repeat' };
+  if (/^(save|open|finish) (this |the )?recipe$/i.test(text)) return { kind: 'recipe' };
+  const portion = /^log (\d+(?:[.,]\d+)?) (?:servings?|portions?) of (.+)$/i.exec(text);
+  if (portion) { const quantity = parseAmount(portion[1]); if (!quantity || quantity === '0') throw new Error('Check the serving amount.'); return { kind: 'portion', quantity, name: portion[2].trim() }; }
+  const recipe = /^(?:start|create|make|name|call) (?:a |this |the )?recipe(?: called| named)?\s+(.+)$/i.exec(text);
+  if (recipe) return { kind: 'draft', draft: { ...draft, recipeName: recipe[1].slice(0, 300) }, message: `Recipe: ${recipe[1]}` };
+  const split = /^(?:split|divide|make)(?: (?:it|this|the meal))?(?: into)? (\d+(?:[.,]\d+)?) (?:servings?|portions?)$/i.exec(text);
+  if (split) {
+    const servingsText = parseAmount(split[1]); if (!servingsText || servingsText === '0' || Number(servingsText) > 10000) throw new Error('Check the serving count.');
+    return { kind: 'draft', draft: { ...draft, splitPlan: { name: draft.recipeName ?? draft.splitPlan?.name ?? 'Meal prep', cookedWeightText: draft.splitPlan?.cookedWeightText ?? '', servingsText } }, message: `Split into ${servingsText} servings · save when ready` };
+  }
+  const weight = /^(?:set )?(?:final |cooked |final cooked )?(?:batch )?weight(?: to| is)? (\d+(?:[.,]\d+)?)\s*(g|grams?|kg|kilograms?)$/i.exec(text);
+  if (weight) {
+    const parsed = parseAmount(weight[1]); if (!parsed || parsed === '0') throw new Error('Check the measured weight.');
+    const cookedWeightText = /^(kg|kilogram)/i.test(weight[2]) ? String(Number(parsed) * 1000) : parsed;
+    return { kind: 'draft', draft: { ...draft, splitPlan: { name: draft.recipeName ?? draft.splitPlan?.name ?? 'Meal prep', servingsText: draft.splitPlan?.servingsText ?? '1', cookedWeightText } }, message: `Measured cooked weight: ${cookedWeightText} g` };
+  }
+  const change = /^(?:change|set|make) (.+?)(?: to| at| is) (\d+(?:[.,]\d+)?)\s*(g|grams?|kg|kilograms?|ml|milliliters?|l|liters?)$/i.exec(text);
+  const remove = /^remove (.+)$/i.exec(text);
+  if (change || remove) {
+    const target = normalize((change ?? remove)![1]);
+    const rows = draft.lines.filter(line => normalize(line.query) === target);
+    const candidates = rows.length ? rows : draft.lines.filter(line => normalize(line.query).includes(target) || normalize(line.food?.name ?? '').includes(target));
+    if (candidates.length !== 1) throw new Error(candidates.length ? 'More than one ingredient matches. Use the exact row name.' : 'That ingredient is not in this meal.');
+    if (remove) return { kind: 'draft', draft: editLiveLine(draft, candidates[0].id, null), message: `${candidates[0].query} removed` };
+    const quantityText = parseAmount(change![2]); if (!quantityText || quantityText === '0') throw new Error('Check the ingredient amount.');
+    const unit = /^(kg|kilogram)/i.test(change![3]) ? 'kg' : /^(ml|milliliter)/i.test(change![3]) ? 'ml' : /^(l|liter)/i.test(change![3]) ? 'l' : 'g';
+    return { kind: 'draft', draft: editLiveLine(draft, candidates[0].id, { quantityText, unit }), message: `${candidates[0].query}: ${quantityText} ${unit}` };
+  }
+  if (/^(?:change|set|make|remove|split|divide|start|create|save|repeat|finish|open|cancel)\b/i.test(text)) throw new Error('Try “Change chicken to 250g”, “Split into 6 servings” or “Save recipe”.');
+  const added = ingredientText(text);
+  // Build the next source from current rows, preserving manual additions and selections.
+  const previous = draft.lines.map(line => `${line.quantityText}${line.unit} ${line.query.replace(/[,;\n]/g, ' ')}`).join(', ');
+  const linked = { ...draft, text: previous, textRows: draft.lines.map(({ id, query, quantityText, unit }) => ({ id, query, quantityText, unit })) };
+  const next = updateLiveText([previous, added].filter(Boolean).join(', '), linked, index, preferences, id);
+  return { kind: 'draft', draft: next, message: 'Ingredients added · check product matches' };
+}
