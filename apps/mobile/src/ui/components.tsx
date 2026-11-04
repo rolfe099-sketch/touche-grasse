@@ -70,13 +70,13 @@ export function Feedback() {
     </Reveal>}
   </>;
 }
-export function Screen({ title, eyebrow, children, scroll = true, back = false, trailing, brand = false, testID, footer, header, support = false }: { title: string; eyebrow?: string; children: React.ReactNode; scroll?: boolean; back?: boolean; trailing?: React.ReactNode; brand?: boolean; testID?: string; footer?: React.ReactNode; header?: React.ReactNode; support?: boolean }) {
+export function Screen({ title, eyebrow, children, scroll = true, back = false, trailing, brand = false, testID, footer, header, support = false, keyboardInsets = true }: { title: string; eyebrow?: string; children: React.ReactNode; scroll?: boolean; back?: boolean; trailing?: React.ReactNode; brand?: boolean; testID?: string; footer?: React.ReactNode; header?: React.ReactNode; support?: boolean; keyboardInsets?: boolean }) {
   return <SafeAreaView testID={testID} style={styles.page} edges={back ? ['top', 'left', 'right', 'bottom'] : ['top', 'left', 'right']}><View style={styles.container}>
     <View style={styles.header}>{header ?? <>{back && <IconButton name="back" label="Back" onPress={() => router.canGoBack() ? router.back() : router.replace('/')} />}
       {brand && <Icon name="brand" size={31} />}
       <View style={{ flex: 1, gap: 4 }}>{eyebrow && <Text style={styles.label}>{eyebrow}</Text>}<Text accessibilityRole="header" style={brand ? { fontFamily: serif, fontSize: 29, lineHeight: 34, letterSpacing: -0.8, fontWeight: '600' } : styles.title}>{title}</Text></View>{trailing}</>}{support && <SupportButton />}</View>
     <Feedback />
-    {scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>{children}</ScrollView> : children}
+    {scroll ? <ScrollView automaticallyAdjustKeyboardInsets={keyboardInsets} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" contentContainerStyle={styles.content}>{children}</ScrollView> : children}
     {footer && <View testID="screen-footer" style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 12, backgroundColor: colors.night, borderTopWidth: 1, borderColor: colors.line }}>{footer}</View>}
   </View></SafeAreaView>;
 }

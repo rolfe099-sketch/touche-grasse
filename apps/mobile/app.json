@@ -7,9 +7,58 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-    "ios": { "supportsTablet": false, "bundleIdentifier": "local.touchegrasse.mobile" },
-    "web": { "bundler": "metro", "output": "single", "name": "Touche Grasse", "shortName": "Touche Grasse", "themeColor": "#19191C", "backgroundColor": "#19191C" },
-    "plugins": ["expo-router", "expo-sqlite", ["expo-camera", { "cameraPermission": "Use the camera to read food barcodes.", "recordAudioAndroid": false, "microphonePermission": "Use the microphone for meal commands when you tap Voice." }], ["expo-image-picker", { "photosPermission": "Choose your own food photos for your recipes.", "cameraPermission": "Use the camera to read food barcodes.", "microphonePermission": "Use the microphone for meal commands when you tap Voice." }], ["expo-speech-recognition", { "microphonePermission": "Use the microphone for meal commands when you tap Voice.", "speechRecognitionPermission": "Recognize your spoken food and recipe commands." }]],
-    "experiments": { "typedRoutes": true }
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "local.touchegrasse.mobile",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Recognize your spoken food and recipe commands.",
+        "NSMicrophoneUsageDescription": "Use the microphone for meal commands when you tap Voice."
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "Touche Grasse",
+      "shortName": "Touche Grasse",
+      "themeColor": "#19191C",
+      "backgroundColor": "#19191C"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Use the camera to read food barcodes.",
+          "recordAudioAndroid": false,
+          "microphonePermission": "Use the microphone for meal commands when you tap Voice."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose your own food photos for your recipes.",
+          "cameraPermission": "Use the camera to read food barcodes.",
+          "microphonePermission": "Use the microphone for meal commands when you tap Voice."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Use the microphone for meal commands when you tap Voice.",
+          "speechRecognitionPermission": "Recognize your spoken food and recipe commands."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "dc9ddfe0-981c-467b-9691-fcb6f38e5d19"
+      }
+    },
+    "owner": "aftertext"
   }
 }

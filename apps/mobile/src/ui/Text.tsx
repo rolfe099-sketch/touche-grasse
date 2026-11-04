@@ -11,5 +11,7 @@ export function Text({ style, ...props }: TextProps) {
 }
 export const TextInput = forwardRef<NativeInput, TextInputProps>(function TextInput({ style, onFocus, onBlur, ...props }, ref) {
   const [focused, setFocused] = useState(false);
-  return <NativeInput ref={ref} keyboardAppearance="dark" placeholderTextColor={colors.secondary} selectionColor={colors.action} {...props} onFocus={event => { setFocused(true); onFocus?.(event); }} onBlur={event => { setFocused(false); onBlur?.(event); }} style={[{ fontFamily: sans, fontSize: 16, fontVariant: ['tabular-nums'], color: colors.ink }, style, focused && { borderColor: colors.action }, Platform.OS === 'web' && { outlineStyle: 'solid', outlineWidth: focused ? 1 : 0, outlineColor: colors.action, outlineOffset: -1 }]} />;
+  // RN 0.81 supplies its native toolbar for number pads when Done is requested.
+  const numericPad = !props.multiline && ['decimal-pad', 'number-pad', 'phone-pad', 'numeric'].includes(props.keyboardType ?? '');
+  return <NativeInput ref={ref} returnKeyType={numericPad ? 'done' : undefined} inputAccessoryViewButtonLabel={Platform.OS === 'ios' && numericPad ? 'Done' : undefined} keyboardAppearance="dark" placeholderTextColor={colors.secondary} selectionColor={colors.action} {...props} onFocus={event => { setFocused(true); onFocus?.(event); }} onBlur={event => { setFocused(false); onBlur?.(event); }} style={[{ fontFamily: sans, fontSize: 16, fontVariant: ['tabular-nums'], color: colors.ink }, style, focused && { borderColor: colors.action }, Platform.OS === 'web' && { outlineStyle: 'solid', outlineWidth: focused ? 1 : 0, outlineColor: colors.action, outlineOffset: -1 }]} />;
 });

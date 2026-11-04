@@ -43,7 +43,7 @@ export default function RecipeEditor() {
   }
   const steps = instructions.split('\n').map(s => s.trim()).filter(Boolean);
   const mealIngredients = params.from === 'draft' ? app.draft.lines.filter(line => !recipe.ingredients.some(i => i.id === line.id)) : [];
-  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen title={existing ? 'Edit recipe' : 'New recipe'} back trailing={<TextButton label="Save" disabled={app.busy} onPress={() => void save()} />}>
+  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen keyboardInsets={false} title={existing ? 'Edit recipe' : 'New recipe'} back trailing={<TextButton label="Save" disabled={app.busy} onPress={() => void save()} />}>
     {!!retained && !!mealIngredients.length && <View style={{ backgroundColor: colors.orangeWash, borderRadius: 6, padding: 14, marginBottom: 15 }}><Text style={{ fontSize: 14, lineHeight: 20 }}>Your unfinished recipe is open. You can keep it and add the ingredients from your meal.</Text><TextButton label="Add this meal's ingredients" onPress={() => setRecipe({ ...recipe, ingredients: [...recipe.ingredients, ...mealIngredients.map(lineIngredient)] })} /></View>}
     <View style={{ borderTopWidth: 3, borderColor: colors.forrest, paddingTop: 14 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.label, { color: colors.forrest }]}>{existing ? 'Saved recipe' : 'Recipe details'}</Text><IconButton name={recipe.favorite ? 'check' : 'bookmark'} label={recipe.favorite ? 'Remove recipe favourite' : 'Favourite recipe'} onPress={() => setRecipe({ ...recipe, favorite: !recipe.favorite })} /></View>

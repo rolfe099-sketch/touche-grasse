@@ -38,6 +38,8 @@ Open the address Expo prints. If port 8081 is busy, run `npx expo start --web --
 
 For phone development, run `npm start` and follow Expo's current instructions for your device and the pinned SDK. The project uses Expo SDK 54. **Direct native speech needs a development build** containing `expo-speech-recognition`; it is not available in Expo Go. Check runtime compatibility before upgrading dependencies.
 
+The [iPhone testing guide](docs/IPHONE_TESTING.md) covers Windows + iPhone testing, the prepared development-build profile, and the physical-device acceptance checklist. No cloud project or signed build is created automatically.
+
 ## Test and build
 
 From `apps/mobile`:
@@ -59,7 +61,7 @@ npm run test:e2e
 
 The browser suite tests parsing, corrections, learned matches, persistence, backup restore, targets, historical snapshots, repeat/undo, portions and layout at iPhone dimensions. Tests use isolated browser contexts and synthetic diaries built from the actual catalog. CI also runs the browser export and tests.
 
-Latest local verification (4 November 2026): **112 unit/storage tests and 32 browser tests passed**; one historical baseline-capture test is intentionally skipped. TypeScript and ESLint passed. These are browser/source checks, not physical iPhone certification.
+Latest local verification (4 November 2026): **126 unit/storage tests, 35 Chromium browser tests and 3 WebKit iPhone-sized tests passed**; one historical baseline-capture test is intentionally skipped. TypeScript, ESLint and iOS JavaScript packaging passed. These are browser/source checks, not physical iPhone certification.
 
 The exported web app supports an offline reload after its first successful online load. Expo's development server does not install the service worker. Browser data belongs to its origin: different hosts and ports have separate libraries. Export/restore to transfer data, and keep backups before changing origins or clearing browser storage.
 

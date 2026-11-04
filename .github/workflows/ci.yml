@@ -37,8 +37,9 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build:web
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
+      - run: npm run test:iphone:web
       - name: Browser reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -47,5 +48,6 @@ jobs:
           path: |
             verification/ci
             verification/targets-support
+            verification/iphone-readiness
             apps/mobile/test-results
           retention-days: 7

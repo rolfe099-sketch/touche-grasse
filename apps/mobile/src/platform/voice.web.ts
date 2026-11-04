@@ -12,10 +12,11 @@ export function createVoiceController(): VoiceController {
     async start(locale, next) {
       cancel(); if (!Constructor) throw new Error('This browser does not support voice input.');
       callbacks = next; const session = new Constructor(); recognition = session; let delivered = false;
+      const active = () => recognition === session;
       session.lang = locale; session.interimResults = true; session.continuous = false;
-      session.onstart = () => next.onState(true); session.onend = () => next.onState(false);
-      session.onerror = event => { next.onState(false); next.onError(event.error === 'not-allowed' ? 'Microphone access is off. Allow it in browser settings, or type your command.' : event.error === 'no-speech' ? 'No speech detected. Try again.' : `Speech unavailable (${event.error}). You can type instead.`); };
-      session.onresult = event => { if (delivered) return; for (let i = event.resultIndex; i < event.results.length; i++) { const result = event.results[i]; if (result.isFinal) delivered = true; next.onText(result[0].transcript, result.isFinal); if (delivered) break; } };
+      session.onstart = () => { if (active()) next.onState(true); }; session.onend = () => { if (active()) { recognition = undefined; next.onState(false); } };
+      session.onerror = event => { if (!active()) return; cancel(); next.onError(event.error === 'not-allowed' ? 'Microphone access is off. Allow it in browser settings, or type your command.' : event.error === 'no-speech' ? 'No speech detected. Try again.' : `Speech unavailable (${event.error}). You can type instead.`); };
+      session.onresult = event => { if (!active() || delivered) return; for (let i = event.resultIndex; i < event.results.length; i++) { const result = event.results[i]; if (result.isFinal) delivered = true; next.onText(result[0].transcript, result.isFinal); if (delivered) break; } };
       session.start();
     }, stop() { recognition?.stop(); }, cancel,
   };

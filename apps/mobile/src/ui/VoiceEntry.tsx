@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Keyboard, View } from 'react-native';
+import { AppState, Keyboard, Linking, Platform, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { createVoiceController } from '../platform/voice';
 import { Text, TextInput } from './Text';
@@ -54,6 +54,7 @@ export function VoiceEntry({ onCommand, disabled, mode, onMode, onReview, onType
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><Text style={{ color: colors.secondary, fontSize: 12, flex: 1 }}>Try: Change chicken to 250g</Text><TextButton label="Apply" accessibilityLabel="Apply meal command" disabled={disabled || listening || !text.trim()} onPress={() => apply(text)} /></View>
       {!voice.available && mode === 'voice' && <Text style={{ color: colors.secondary, fontSize: 12 }}>{voice.unavailable}</Text>}
       {!!error && <Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 13, marginTop: 7 }}>{error}</Text>}
+      {Platform.OS !== 'web' && error.includes('access is off') && <TextButton label="Open device settings" onPress={() => void Linking.openSettings().catch(() => setError('Open Settings on your phone to enable microphone and speech access.'))} />}
       <TextButton label="Back to ingredients" accessibilityLabel="Hide commands" onPress={review} />
     </View></Reveal>}
   </View>;

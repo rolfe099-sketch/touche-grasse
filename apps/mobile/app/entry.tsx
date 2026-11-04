@@ -87,7 +87,7 @@ export default function Entry() {
     <Button label={`Log ${draft.lines.length === 1 ? 'food' : `${draft.lines.length} foods`} today`} testID="commit-food" icon="check" primary disabled={!progress.valid || busy} onPress={() => void run(() => repo.logDraft(draft), 'Meal logged', true).then(ok => { if (ok) router.dismissTo('/'); })} />
   </>;
   return <EntryFrame>
-    <Screen support title={draft.recipeName ? 'Build a recipe' : 'Quick Log'} back footer={footer} trailing={<IconButton name="type" label="Type commands" onPress={() => { Keyboard.dismiss(); setMode('text'); setCommandsOpen(!commandsOpen); }} />}>
+    <Screen keyboardInsets={false} support title={draft.recipeName ? 'Build a recipe' : 'Quick Log'} back footer={footer} trailing={<IconButton name="type" label="Type commands" onPress={() => { Keyboard.dismiss(); setMode('text'); setCommandsOpen(!commandsOpen); }} />}>
       <VoiceEntry onCommand={command} disabled={busy} mode={mode} onMode={selectMode} onReview={() => setMode('text')} onType={focusSource} commandsOpen={commandsOpen} onCommands={setCommandsOpen} autoStart={params.mode === 'voice'}>
         <TextInput ref={source} autoFocus={initialMode === 'text' && !draft.lines.length} onFocus={() => setSourceFocused(true)} onBlur={() => setSourceFocused(false)} accessibilityLabel="Meal" testID="quick-text" placeholder="200g chicken, 150g pasta…" placeholderTextColor={colors.secondary} style={{ paddingHorizontal: 13, paddingVertical: 10, minHeight: 50, maxHeight: sourceFocused ? 115 : 64, fontSize: 17, lineHeight: 22 }} value={draft.text} multiline maxLength={10000} onChangeText={typeMeal} editable={!busy} />
       </VoiceEntry>

@@ -42,4 +42,8 @@ expo-env.d.ts
 .aws/
 .codex/
 .agents/
+credentials.json
+/apps/mobile/credentials/
+/apps/mobile/ios/
+/apps/mobile/android/
 

@@ -300,6 +300,31 @@ describe('disk persistence and migrations', () => {
   it('refuses a future SQLite schema', async () => {
     const db = new DatabaseSync(':memory:'); db.exec('PRAGMA user_version=99'); await expect(openSQLStorage(driver(db))).rejects.toThrow('newer app');
   });
+  it('closes a failed migration handle and retains the previous on-disk schema and draft', async () => {
+    const folder = mkdtempSync(path.join(tmpdir(), 'tg-migration-'));
+    try {
+      const file = path.join(folder, 'library.sqlite'), db = new DatabaseSync(file);
+      db.exec(migration1);
+      db.prepare('INSERT INTO records VALUES(?,?,?,?)').run('draft:active', 'draft', 'active', JSON.stringify(draftFor()));
+      const connection = driver(db), transaction = connection.withExclusiveTransactionAsync;
+      let closed = false;
+      const close = connection.closeAsync;
+      connection.closeAsync = async () => { closed = true; await close(); };
+      connection.withExclusiveTransactionAsync = task => transaction(async tx => task({ ...tx, execAsync: async sql => {
+        await tx.execAsync(sql); throw new Error('simulated migration interruption');
+      } }));
+      await expect(openSQLStorage(connection)).rejects.toThrow('migration interruption'); expect(closed).toBe(true);
+      const reopened = new DatabaseSync(file);
+      try {
+        expect(reopened.prepare('PRAGMA user_version').get()?.user_version).toBe(1);
+        expect(reopened.prepare('SELECT key FROM records').all()).toHaveLength(1);
+        expect(reopened.prepare('PRAGMA table_info(records)').all().some(row => row.name === 'updated_at')).toBe(false);
+      } finally { reopened.close(); }
+    } finally {
+      if (!path.resolve(folder).startsWith(path.resolve(tmpdir()) + path.sep + 'tg-migration-')) throw new Error('Unexpected cleanup path');
+      rmSync(folder, { recursive: true });
+    }
+  });
   it('rolls back a failed native SQL transaction completely', async () => {
     const db = new DatabaseSync(':memory:'), storage = await openSQLStorage(driver(db));
     db.exec("CREATE TRIGGER fail_log BEFORE INSERT ON records WHEN new.kind='log' BEGIN SELECT RAISE(ABORT,'simulated disk failure'); END;");
