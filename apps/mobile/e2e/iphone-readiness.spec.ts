@@ -10,7 +10,12 @@ test('iPhone-sized meal correction, six portions, reload, one serving and undo r
   await page.goto('/entry');
   await page.getByTestId('quick-text').fill('200g chicken, 150g pasta, 15g pesto, 10g olive oil, 50g parmesan');
   for (const [i, id] of ['03.205', '05.016', '06.144'].entries()) await page.getByTestId(`choice-${i}-mvt:${id}`).click();
-  await page.getByTestId('quantity-0').fill('250');
+  await page.getByTestId('quantity-0').click(); await page.keyboard.insertText('250');
+  await expect(page.getByTestId('quantity-0')).toHaveValue('250');
+  if (test.info().project.use.hasTouch) {
+    await page.getByTestId('quantity-1').tap(); await page.keyboard.insertText('150');
+    await expect(page.getByTestId('quantity-1')).toHaveValue('150');
+  }
   await expect(page.getByTestId('quantity-1')).toHaveValue('150'); await expect(page.getByTestId('quantity-4')).toHaveValue('50');
   await page.getByTestId('quantity-0').fill('200');
   await expect(page.getByTestId('meal-kcal')).toContainText('1,116');

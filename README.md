@@ -67,7 +67,7 @@ The exported web app supports an offline reload after its first successful onlin
 
 ## Current limits
 
-- Physical iPhone behavior, permissions, native speech and camera scanning still require device testing. No signed native binary or app-store distribution is included.
+- Physical iPhone behavior, permissions, native speech and camera scanning still require device testing. An internal iOS development build has been produced; it is not an App Store release, and native binaries are not committed to this repository.
 - Barcode matching currently uses previously saved barcodes. Remote product lookup and nutrition-label OCR are not implemented.
 - Voice uses platform/browser speech recognition; availability, processing location and accuracy depend on the runtime. Commands cover implemented meal/recipe operations, not unrestricted assistant behavior.
 - There is no cloud sync. JSON exports can contain personal diary data and photos and are not encrypted by the app.

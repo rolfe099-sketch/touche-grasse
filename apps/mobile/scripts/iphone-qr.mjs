@@ -1,6 +1,6 @@
 // Local developer helper using Expo CLI's existing QR dependency. No cloud service.
 import { createRequire } from 'node:module';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 const require = createRequire(import.meta.url);
 const QRCode = require('qrcode-terminal/vendor/QRCode');
 const level = require('qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel');
@@ -9,11 +9,14 @@ if (!host || !/^(?:\d{1,3}\.){3}\d{1,3}:\d{2,5}$/.test(host)) throw new Error('S
 const response = await fetch(`http://${host}`, { headers: { Accept: 'application/expo+json', 'Expo-Platform': 'ios' } });
 const manifest = await response.json();
 if (manifest.extra?.expoClient?.slug !== 'touche-grasse' || manifest.extra?.expoClient?.sdkVersion !== '54.0.0') throw new Error('Expected this project on SDK 54');
-const url = `exp://${host}`;
+const development = process.argv.includes('--dev-client');
+const url = development ? `exp+touche-grasse://expo-development-client/?url=${encodeURIComponent(`http://${host}`)}` : `exp://${host}`;
 const qr = new QRCode(-1, level.M); qr.addData(url); qr.make();
 const count = qr.getModuleCount(), size = count + 8;
+mkdirSync('../../verification/expo', { recursive: true });
+const prefix = development ? 'iphone-dev-client' : 'iphone';
 const squares = [];
 for (let row = 0; row < count; row++) for (let col = 0; col < count; col++) if (qr.isDark(row, col)) squares.push(`M${col + 4},${row + 4}h1v1h-1z`);
-writeFileSync('../../verification/expo/iphone-qr.svg', `<svg xmlns="http://www.w3.org/2000/svg" width="370" height="370" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges"><rect width="${size}" height="${size}" fill="white"/><path d="${squares.join('')}" fill="black"/></svg>`);
-writeFileSync('../../verification/expo/iphone-connection.json', JSON.stringify({ url, sdkVersion: manifest.extra.expoClient.sdkVersion, verifiedFromComputer: true, physicalIPhoneVerified: false }, null, 2));
+writeFileSync(`../../verification/expo/${prefix}-qr.svg`, `<svg xmlns="http://www.w3.org/2000/svg" width="370" height="370" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges"><rect width="${size}" height="${size}" fill="white"/><path d="${squares.join('')}" fill="black"/></svg>`);
+writeFileSync(`../../verification/expo/${prefix}-connection.json`, JSON.stringify({ url, sdkVersion: manifest.extra.expoClient.sdkVersion, verifiedFromComputer: true, physicalIPhoneVerified: false }, null, 2));
 console.log(`QR saved for ${url}. Computer-side manifest checked; iPhone connection still requires a device check.`);

@@ -25,6 +25,8 @@ For the automated browser check, export the web app, then use `npx playwright in
 
 The repository includes `expo-dev-client` matched to SDK 54 and an `eas.json` development profile for a physical iPhone (`simulator: false`, internal distribution). The maintainer's authenticated Expo project is `@aftertext/touche-grasse`, linked through the standard public project ID in `app.json`. No signing team or credentials are included. Contributors should link their own Expo project rather than attempting to build against the maintainer's account.
 
+The maintainer confirmed the standard/exempt encryption classification for this build, recorded as `ITSAppUsesNonExemptEncryption: false`. Reassess that declaration if encryption-related behavior or linked libraries change; it is not a blanket compliance assertion for forks.
+
 Expo EAS can build iOS remotely from Windows. Installing its signed build on a physical iPhone requires the owner's Expo account and Apple Developer Program credentials/membership. Review service pricing and account access first. Linking a project is not a signed build or device validation; Apple login, signing and device enrollment remain separate steps.
 
 Once the owner has chosen that route, the setup sequence is:
@@ -40,6 +42,8 @@ npx eas-cli build --platform ios --profile development
 ```
 
 Use the resulting device installation link, enable Developer Mode if iOS requires it, and start the local server with `npm run start:iphone`. Keep the phone and Windows PC on the same private network. The project currently retains its existing `local.touchegrasse.mobile` bundle identifier; verify availability before the first signed build and keep the chosen ID stable afterward. Changing it creates a separate app/storage identity.
+
+To create a connection QR after the server starts, run `node scripts/iphone-qr.mjs <PC-LAN-IP>:8082 --dev-client`. It checks the real iOS manifest and writes `verification/expo/iphone-dev-client-qr.svg` locally. Scan it only after installing this project's signed development client. Without `--dev-client`, the helper retains its Expo Go URL mode; that mode does not add native speech support.
 
 Expo Go can only use native modules present in its installed binary and must support this project's pinned SDK. Direct `expo-speech-recognition` requires the custom build; do not treat an Expo Go run as its native voice test. Do not upgrade the SDK just to match a phone client without a separate compatibility review.
 
