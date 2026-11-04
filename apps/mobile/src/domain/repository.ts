@@ -6,6 +6,7 @@ import { FoodIndex, normalize } from './search';
 import { emptyPreferences, liveTextIsCurrent, quickEntrySchema, QuickEntryPreferences } from './quickEntry';
 import { TargetChange, targetChangeSchema, TargetValues, targetValuesSchema } from './targets';
 import { sameBarcode } from './barcode';
+import { makeRepeatReview, repeatReviewSchema, reviewRepeatedMeal } from './repeatMeal';
 
 const archiveSchema = z.object({ format: z.literal('touche-grasse'), version: z.literal(2), foods: z.array(foodSchema).max(20000), logs: z.array(logSchema).max(100000), recipes: z.array(recipeSchema).max(10000), draft: draftSchema, profile: profileSchema.optional(), recipeDrafts: z.record(z.string(), recipeDraftSchema).optional(), quickEntry: quickEntrySchema.optional(), preparedBatches: z.array(preparedBatchSchema).max(20000).optional(), targets: z.array(targetChangeSchema).max(20000).optional() });
 function utf8Size(value: string) {
@@ -179,6 +180,48 @@ export class Repository {
   repeat(entry: LogEntry, at = new Date()) {
     return this.repeatMeal([entry.id], at);
   }
+  startRepeatReview(entryIds: string[]) {
+    const ids = [...new Set(entryIds)];
+    return this.serialized(async () => {
+      if (this.quickEntry.repeatReview) throw new Error('Finish or cancel your current repeat first.');
+      if (!ids.length || ids.length > 200) throw new Error('Choose a meal with 1–200 entries.');
+      const entries = ids.map(id => { const entry = this.logs.find(log => log.id === id); if (!entry) throw new Error('This meal is no longer available.'); return entry; });
+      const repeatReview = makeRepeatReview(entries, this.id());
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, repeatReview });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
+    });
+  }
+  saveRepeatAmounts(reviewId: string, input: string[]) {
+    const amounts = [...input];
+    return this.serialized(async () => {
+      const current = this.quickEntry.repeatReview;
+      if (!current || current.id !== reviewId) throw new Error('This repeat is no longer open.');
+      const repeatReview = repeatReviewSchema.parse({ ...current, amounts });
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, repeatReview });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
+    });
+  }
+  cancelRepeatReview(reviewId: string) {
+    return this.serialized(async () => {
+      if (this.quickEntry.repeatReview?.id !== reviewId) throw new Error('This repeat is no longer open.');
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, repeatReview: undefined });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
+    });
+  }
+  logRepeatReview(reviewId: string, at = new Date()) {
+    return this.serialized(async () => {
+      const review = this.quickEntry.repeatReview;
+      if (!review || review.id !== reviewId) throw new Error('This repeat is no longer open.');
+      const progress = reviewRepeatedMeal(review);
+      if (!progress.valid) throw new Error('Check the highlighted amounts before logging.');
+      const batchId = this.id();
+      const logs = progress.rows.map(row => logSchema.parse({ id: this.id(), batchId, recordedAt: at.toISOString(), meal: row.entry.meal, preparedBatchId: row.entry.preparedBatchId, snapshot: row.snapshot, nutrition: row.nutrition }));
+      assertBatchCapacity(this.preparedBatches, [...this.logs, ...logs]);
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, repeatReview: undefined }), undo = logs.map(log => log.id);
+      await this.commit([...logs.map(log => put('log', log.id, log)), put('quickEntry', 'preferences', preferences), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
+      this.logs = [...this.logs, ...logs]; this.quickEntry = preferences; this.undo = undo; this.deletionUndo = []; this.sortAndIndex();
+    });
+  }
   repeatMeal(entryIds: string[], at = new Date()) {
     const ids = [...new Set(entryIds)];
     return this.serialized(async () => {
@@ -300,6 +343,7 @@ export class Repository {
       this.logs = [...this.logs, log]; this.undo = [log.id]; this.deletionUndo = []; this.sortAndIndex(); return log;
     });
   }
+  async waitForWrites() { await this.queue; }
   async exportJSON() {
     await this.queue;
     const json = JSON.stringify({ format: 'touche-grasse', version: 2, profile: this.profile, foods: this.foods, logs: this.logs, recipes: this.recipes, draft: this.draft, recipeDrafts: this.recipeDrafts, quickEntry: this.quickEntry, preparedBatches: this.preparedBatches, targets: this.targets }, null, 2);
@@ -334,7 +378,7 @@ export class Repository {
       const recipeDrafts = { ...backup.recipeDrafts, ...this.recipeDrafts };
       const matches = { ...backup.quickEntry?.matches };
       for (const [query, match] of Object.entries(this.quickEntry.matches)) if (options.recoverMissing || !matches[query] || matches[query].confirmedAt <= match.confirmedAt) matches[query] = match;
-      const preferences = quickEntrySchema.parse({ entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
+      const preferences = quickEntrySchema.parse({ entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
       const clearingDeletion = this.isDeletionUndo;
       await this.commit([...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : []), ...(clearingDeletion ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
       if (clearingDeletion) { this.undo = []; this.deletionUndo = []; }

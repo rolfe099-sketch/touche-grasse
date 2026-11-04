@@ -86,6 +86,9 @@ it('builds a named recipe, serving split and measured cooked weight without logg
 });
 it('returns explicit logging/repeat/portion intents and rejects unsupported commands', () => {
   expect(command('Log it')).toEqual({ kind: 'log' }); expect(command('Repeat my last meal')).toEqual({ kind: 'repeat' });
+  expect(command('Same breakfast as yesterday')).toEqual({ kind: 'repeat', yesterdayMeal: 'Frokost' });
+  expect(command('Repeat lunch from yesterday.')).toEqual({ kind: 'repeat', yesterdayMeal: 'Lunsj' });
+  expect(command('Log dinner yesterday')).toEqual({ kind: 'repeat', yesterdayMeal: 'Middag' });
   expect(command('Log two servings of Chicken pasta')).toEqual({ kind: 'portion', quantity: '2', name: 'Chicken pasta' });
   expect(() => command('Change everything')).toThrow('Try'); expect(() => command('')).toThrow('first');
 });

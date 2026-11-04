@@ -53,5 +53,6 @@ jobs:
             verification/voice-multi
             verification/barcode
             verification/recovery
+            verification/repeat-meals
             apps/mobile/test-results
           retention-days: 7

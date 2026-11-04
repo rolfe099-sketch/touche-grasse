@@ -1,14 +1,16 @@
-import { Draft, IdFactory, parseAmount } from './model';
+import { dayKey, Draft, IdFactory, LogEntry, Meal, parseAmount } from './model';
 import { ingredientText, spokenNumbers } from './naturalInput';
 import { editLiveLine, QuickEntryPreferences, updateLiveText } from './quickEntry';
 import { FoodIndex, normalize } from './search';
 
-export type MealCommand = { kind: 'draft'; draft: Draft; message: string } | { kind: 'log' } | { kind: 'recipe' } | { kind: 'repeat' } | { kind: 'portion'; name: string; quantity: string };
+export type MealCommand = { kind: 'draft'; draft: Draft; message: string } | { kind: 'log' } | { kind: 'recipe' } | { kind: 'repeat'; yesterdayMeal?: Meal } | { kind: 'portion'; name: string; quantity: string };
 export function applyCommand(input: string, draft: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory): MealCommand {
   const text = spokenNumbers(input).trim().replace(/[.!?]+$/, '');
   if (!text) throw new Error('Say or type a command first.');
   if (/^(log|save) (it|this|meal|this meal)( now| today)?$/i.test(text)) return { kind: 'log' };
   if (/^(repeat|log) (my |the )?last meal$/i.test(text)) return { kind: 'repeat' };
+  const yesterday = /^(?:same|repeat|log)(?: my| the)? (breakfast|lunch|dinner|snack|snacks|frokost|lunsj|middag)(?: as| from)? yesterday$/i.exec(text);
+  if (yesterday) return { kind: 'repeat', yesterdayMeal: ({ breakfast: 'Frokost', lunch: 'Lunsj', dinner: 'Middag', snack: 'Annet', snacks: 'Annet', frokost: 'Frokost', lunsj: 'Lunsj', middag: 'Middag' } as Record<string, Meal>)[yesterday[1].toLowerCase()] };
   if (/^(save|open|finish) (this |the )?recipe$/i.test(text)) return { kind: 'recipe' };
   const portion = /^log (\d+(?:[.,]\d+)?) (?:servings?|portions?) of (.+)$/i.exec(text);
   if (portion) { const quantity = parseAmount(portion[1]); if (!quantity || quantity === '0') throw new Error('Check the serving amount.'); return { kind: 'portion', quantity, name: portion[2].trim() }; }
@@ -44,4 +46,9 @@ export function applyCommand(input: string, draft: Draft, index: FoodIndex, pref
   const linked = { ...draft, text: previous, textRows: draft.lines.map(({ id, query, quantityText, unit }) => ({ id, query, quantityText, unit })) };
   const next = updateLiveText([previous, added].filter(Boolean).join(', '), linked, index, preferences, id);
   return { kind: 'draft', draft: next, message: 'Ingredients added · check product matches' };
+}
+
+export function yesterdayMealEntries(logs: LogEntry[], meal: Meal, now = new Date()): LogEntry[] {
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+  return logs.filter(log => log.meal === meal && dayKey(new Date(log.recordedAt)) === dayKey(yesterday));
 }

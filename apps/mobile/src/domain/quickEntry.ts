@@ -2,12 +2,14 @@ import { z } from 'zod';
 import { Draft, draftSchema, Food, foodNutrition, IdFactory, Line, lineIngredient, LogEntry, parseEntry, total } from './model';
 import { FoodIndex, normalize } from './search';
 import { cookingRecordAllowed, preparationNeedsChoice } from './foodLanguage';
+import { repeatReviewSchema } from './repeatMeal';
 
 // References only: nutrients always come from the current verified Food record.
 export const quickEntrySchema = z.object({
   matches: z.record(z.string().max(500), z.object({ foodId: z.string().max(200), confirmedAt: z.iso.datetime() })),
   favorites: z.array(z.string().max(200)).max(20000),
   entryMethod: z.enum(['text', 'voice', 'scan']).optional(),
+  repeatReview: repeatReviewSchema.optional(),
 });
 export type QuickEntryPreferences = z.infer<typeof quickEntrySchema>;
 export const emptyPreferences = (): QuickEntryPreferences => ({ matches: {}, favorites: [] });

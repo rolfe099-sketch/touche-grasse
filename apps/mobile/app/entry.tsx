@@ -4,7 +4,7 @@ import { Keyboard, Pressable, StyleSheet, TextInput as NativeInput, View } from 
 import { router, useLocalSearchParams } from 'expo-router';
 import { display, Food, lineIngredient, meals, Recipe, Unit } from '../src/domain/model';
 import { editLiveLine, liveTextIsCurrent, matchIngredient, mealProgress, recentMealBatches, updateLiveText } from '../src/domain/quickEntry';
-import { applyCommand } from '../src/domain/commands';
+import { applyCommand, yesterdayMealEntries } from '../src/domain/commands';
 import { foodLabel } from '../src/domain/foodLanguage';
 import { normalize } from '../src/domain/search';
 import { useApp } from '../src/state/AppContext';
@@ -16,6 +16,7 @@ import { Icon } from '../src/ui/Icon';
 import { EntryMethod, VoiceEntry } from '../src/ui/VoiceEntry';
 import { Scanner } from '../src/ui/Scanner';
 import { EntryFrame } from '../src/ui/EntryFrame';
+import { RepeatMealReview } from '../src/ui/RepeatMealReview';
 import { Reveal } from '../src/ui/Motion';
 
 export default function Entry() {
@@ -51,7 +52,7 @@ export default function Entry() {
       if (result.kind === 'draft') { setDraft(result.draft); setCommandNotice(result.message); setEditing(undefined); setFilter(undefined); }
       else if (result.kind === 'recipe') { if (!progress.valid) throw new Error('Resolve the ingredient rows before saving a recipe.'); openRecipe(); }
       else if (result.kind === 'log') { if (draft.splitPlan) throw new Error('Save this batch first, then log the servings you ate.'); void run(() => repo.logDraft(draft), 'Meal logged', true).then(ok => { if (ok) router.dismissTo('/'); }); }
-      else if (result.kind === 'repeat') { const last = recentMealBatches(repo.logs, 1)[0]; if (!last) throw new Error('There is no previous meal to repeat.'); void run(() => repo.repeatMeal(last.map(log => log.id)), 'Previous meal logged').then(ok => { if (ok) router.dismissTo('/'); }); }
+      else if (result.kind === 'repeat') { const last = result.yesterdayMeal ? yesterdayMealEntries(repo.logs, result.yesterdayMeal) : recentMealBatches(repo.logs, 1)[0]; if (!last?.length) throw new Error(result.yesterdayMeal ? `No ${mealLabel(result.yesterdayMeal).toLowerCase()} was logged yesterday.` : 'There is no previous meal to repeat.'); void run(() => repo.repeatMeal(last.map(log => log.id)), 'Previous meal logged').then(ok => { if (ok) router.dismissTo('/'); }); }
       else { const exact = repo.preparedBatches.filter(batch => normalize(batch.recipe.name) === normalize(result.name)); const batches = exact.length ? exact : repo.preparedBatches.filter(batch => normalize(batch.recipe.name).includes(normalize(result.name))); if (batches.length !== 1) throw new Error('Use the exact name of one saved batch.'); void run(() => repo.logPreparedBatch(batches[0].id, result.quantity), 'Saved portion logged').then(ok => { if (ok) router.dismissTo('/'); }); }
       return true;
     } catch (error) { setParseError(error instanceof Error ? error.message : 'Check that command.'); return false; }
@@ -76,6 +77,7 @@ export default function Entry() {
       try { setDraft(updateLiveText(draft.text, draft, repo.index, repo.quickEntry, repo.id)); } catch { /* Keep source text for correction, including older parser drafts. */ }
     }
   }, [draft, repo, setDraft]);
+  if (repo.quickEntry.repeatReview) return <EntryFrame><Screen keyboardInsets={false} support title="Quick Log" back><RepeatMealReview onLogged={() => router.dismissTo('/')} /></Screen></EntryFrame>;
   const splitting = draft.splitPlan;
   const footer = !!draft.lines.length && !(splitting && progress.valid) && <>
     <View testID="meal-nutrition">
@@ -95,7 +97,7 @@ export default function Entry() {
       {draft.recipeName && <Text style={{ fontSize: 13, fontWeight: '600', color: colors.action, marginBottom: 6 }}>{draft.recipeName}</Text>}
       {!!commandNotice && <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: colors.forrest, marginBottom: 5 }}>{commandNotice}</Text>}
       {parseError && <Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 13 }}>{parseError}</Text>}
-      {!draft.lines.length && !createdBatch && !!repo.logs.length && <View style={{ marginVertical: 12 }}><Text style={{ fontSize: 13, fontWeight: '700', marginBottom: 4 }}>Log again</Text>{recentMealBatches(repo.logs, 3).map(batch => <Pressable key={batch[0].batchId} accessibilityRole="button" accessibilityLabel={`Log recent meal ${batch[0].batchId}`} disabled={busy} onPress={() => void run(() => repo.repeatMeal(batch.map(log => log.id)), 'Previous meal logged').then(ok => { if (ok) router.dismissTo('/'); })} style={{ minHeight: 52, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderColor: colors.line }}><View style={{ flex: 1 }}><Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600' }}>{batch.map(log => log.snapshot.kind === 'recipe' ? log.snapshot.recipe.name : foodLabel(log.snapshot.ingredient.food)).join(', ')}</Text><Text style={s.small}>{batch.length === 1 ? '1 entry' : `${batch.length} entries`}</Text></View><Text style={{ fontSize: 18, color: colors.action }}>↻</Text></Pressable>)}</View>}
+      {!draft.lines.length && !createdBatch && !!repo.logs.length && <View style={{ marginVertical: 12 }}><Text style={{ fontSize: 13, fontWeight: '700', marginBottom: 4 }}>Log again</Text>{recentMealBatches(repo.logs, 3).map((batch, i) => <View key={batch[0].batchId} style={{ flexDirection: 'row', alignItems: 'center' }}><Pressable accessibilityRole="button" accessibilityLabel={`Log recent meal ${batch[0].batchId}`} disabled={busy} onPress={() => void run(() => repo.repeatMeal(batch.map(log => log.id)), 'Previous meal logged').then(ok => { if (ok) router.dismissTo('/'); })} style={{ flex: 1, minHeight: 52, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderColor: colors.line }}><View style={{ flex: 1 }}><Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600' }}>{batch.map(log => log.snapshot.kind === 'recipe' ? log.snapshot.recipe.name : foodLabel(log.snapshot.ingredient.food)).join(', ')}</Text><Text style={s.small}>{batch.length === 1 ? '1 entry' : `${batch.length} entries`}</Text></View><Text style={{ fontSize: 18, color: colors.action }}>↻</Text></Pressable><TextButton label="Adjust" accessibilityLabel={`Adjust recent meal ${i + 1}`} disabled={busy || !!repo.quickEntry.repeatReview} onPress={() => void run(() => repo.startRepeatReview(batch.map(log => log.id)))} /></View>)}</View>}
       {createdBatch && repo.preparedBatches.find(batch => batch.id === createdBatch) && <><SavedPortions batch={repo.preparedBatches.find(batch => batch.id === createdBatch)!} /><TextButton label="Save remaining for later" onPress={() => router.dismissTo('/recipes')} /></>}
       {splitting && progress.valid && <SplitIntoServings recipe={{ id: 'prepared:' + draft.id, name: splitting.name || 'Meal prep', servings: '1', cookedWeightGrams: null, ingredients: draft.lines.map(lineIngredient), steps: [], favorite: false }} plan={splitting} onChange={splitPlan => setDraft({ ...draft, splitPlan })} onCancel={() => setDraft({ ...draft, splitPlan: undefined })} onSave={async (recipe: Recipe) => { const batch = await repo.createBatchFromDraft(draft, recipe.name, recipe.servings, recipe.cookedWeightGrams); setCreatedBatch(batch.id); }} />}
       {progress.rows.map(({ line, nutrition, error }, index) => {

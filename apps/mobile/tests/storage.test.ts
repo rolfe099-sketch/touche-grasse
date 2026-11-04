@@ -68,6 +68,47 @@ for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} r
     await expect(repo.saveFood(corrected, { ...repo.draft, lines: repo.draft.lines.map(line => ({ ...line, food: corrected })) })).rejects.toThrow('disk failure');
     expect(repo.foods).toEqual(before.foods); expect(repo.draft).toEqual(before.draft); await repo.close();
   });
+  it('persists an adjusted repeat separately, preserves source snapshots and draft, and logs/undoes it atomically', async () => {
+    const storage = await adapter(), repo = await setup(storage), source = draftFor();
+    const ordered = (logs: typeof repo.logs) => [...logs].sort((a, b) => a.id.localeCompare(b.id));
+    source.lines.push({ ...source.lines[0], id: randomUUID(), quantityText: '20' });
+    await repo.logDraft(source, new Date('2026-11-03T08:00:00Z')); const original = structuredClone(repo.logs);
+    await repo.saveDraft({ ...draftFor(), text: 'unfinished' }); const active = structuredClone(repo.draft);
+    await repo.startRepeatReview(original.map(log => log.id)); const reviewId = repo.quickEntry.repeatReview!.id;
+    expect(repo.logs).toEqual(original); await repo.saveRepeatAmounts(reviewId, ['15', '20']);
+    const reopened = await setup(storage); expect(reopened.quickEntry.repeatReview!.amounts).toEqual(['15', '20']); expect(reopened.draft).toEqual(active);
+    const restored = await setup(await adapter()); await restored.restoreJSON(await reopened.exportJSON()); expect(restored.quickEntry.repeatReview!.amounts).toEqual(['15', '20']);
+    await restored.saveRepeatAmounts(reviewId, ['16', '20']); await restored.restoreJSON(await reopened.exportJSON(), { recoverMissing: true }); expect(restored.quickEntry.repeatReview!.amounts).toEqual(['16', '20']);
+    await reopened.saveRepeatAmounts(reviewId, ['', '20']); await expect(reopened.logRepeatReview(reviewId)).rejects.toThrow('amounts'); expect(ordered(reopened.logs)).toEqual(ordered(original));
+    await reopened.saveFood({ ...oil, nutrition: { ...oil.nutrition, kcal: '1' } });
+    await reopened.saveRepeatAmounts(reviewId, ['15', '20']); await reopened.logRepeatReview(reviewId);
+    expect(reopened.logs.filter(log => !original.some(before => before.id === log.id)).map(log => log.nutrition.kcal).sort()).toEqual(['133.8', '178.4']);
+    expect(reopened.quickEntry.repeatReview).toBeUndefined(); expect(reopened.draft).toEqual(active); expect(reopened.undo).toHaveLength(2);
+    await expect(reopened.logRepeatReview(reviewId)).rejects.toThrow('no longer open');
+    await reopened.undoLast(); expect(ordered(reopened.logs)).toEqual(ordered(original)); expect(reopened.draft).toEqual(active);
+    await restored.close(); await reopened.close();
+  });
+  it('an adjusted saved-serving repeat consumes exact inventory and blocks overdrawing without losing its edits', async () => {
+    const repo = await setup(await adapter());
+    const recipe: Recipe = { id: randomUUID(), name: 'Finite batch', ingredients: [{ id: randomUUID(), food: oil, quantity: '60', unit: 'g' }], servings: '6', cookedWeightGrams: '600', steps: [], favorite: false };
+    const batch = await repo.createPreparedBatch(recipe); await repo.logPreparedBatch(batch.id);
+    const original = structuredClone(repo.logs); await repo.startRepeatReview([original[0].id]); const reviewId = repo.quickEntry.repeatReview!.id;
+    await repo.saveRepeatAmounts(reviewId, ['6']); await expect(repo.logRepeatReview(reviewId)).rejects.toThrow();
+    expect(repo.logs).toEqual(original); expect(repo.quickEntry.repeatReview!.amounts).toEqual(['6']);
+    await repo.saveRepeatAmounts(reviewId, ['3']); await repo.logRepeatReview(reviewId); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('2');
+    const added = repo.logs.find(log => log.id !== original[0].id)!; expect(added.preparedBatchId).toBe(batch.id); expect(added.nutrition.kcal).toBe('267.6');
+    await repo.undoLast(); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('5'); expect(repo.logs).toEqual(original); await repo.close();
+  });
+  it('failed adjusted-repeat writes keep the draft, diary and previous undo and reject stale editors', async () => {
+    const storage = await adapter(); let fail = false;
+    const repo = await setup({ ...storage, commit: (changes, revision) => fail ? Promise.reject(new Error('simulated disk failure')) : storage.commit(changes, revision) });
+    await repo.logDraft(draftFor()); await repo.startRepeatReview([repo.logs[0].id]); const id = repo.quickEntry.repeatReview!.id;
+    const before = structuredClone({ logs: repo.logs, undo: repo.undo, preferences: repo.quickEntry }); fail = true;
+    await expect(repo.saveRepeatAmounts(id, ['15'])).rejects.toThrow('disk failure'); await expect(repo.logRepeatReview(id)).rejects.toThrow('disk failure');
+    expect({ logs: repo.logs, undo: repo.undo, preferences: repo.quickEntry }).toEqual(before);
+    fail = false; await expect(repo.startRepeatReview([repo.logs[0].id])).rejects.toThrow('Finish or cancel');
+    await repo.cancelRepeatReview(id); await expect(repo.saveRepeatAmounts(id, ['15'])).rejects.toThrow('no longer open'); expect(repo.logs).toEqual(before.logs); await repo.close();
+  });
   it('deletes only chosen entries and restores exact corrected snapshots, unknowns and IDs', async () => {
     const repo = await setup(await adapter()), draft = draftFor();
     draft.lines[0].food = { ...oil, nutrition: { ...oil.nutrition, fiber: null } };
