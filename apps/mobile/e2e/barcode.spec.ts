@@ -4,6 +4,9 @@ import path from 'node:path';
 import { milkCode, milkProduct } from '../tests/barcode-fixture';
 const endpoint = 'https://world.openfoodfacts.org/api/v3.6/product/**';
 const output = path.resolve('../../verification/barcode');
+// API fixtures must reach Playwright routing instead of a service worker's
+// independent network stack. Offline saved-product use relies on IndexedDB.
+test.use({ serviceWorkers: 'block' });
 test.beforeEach(async ({ page }) => { mkdirSync(output, { recursive: true }); await page.setViewportSize({ width: 393, height: 852 }); await page.emulateMedia({ reducedMotion: 'reduce' }); });
 async function scan(page: Page, code = milkCode) {
   await page.goto('/entry'); await page.getByRole('button', { name: 'Scan a barcode', exact: true }).click();
