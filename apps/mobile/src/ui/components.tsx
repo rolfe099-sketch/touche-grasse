@@ -105,7 +105,7 @@ export const FoodRow = React.memo(function FoodRow({ food, onSelect, onSave, onE
   return <View style={styles.row}>
     <Pressable onPress={onSelect} accessibilityRole="button" accessibilityLabel={`Select ${food.name}`} testID={`food-${food.id}`} style={({ pressed }) => ({ flex: 1, minHeight: 44, justifyContent: 'center', gap: 4, opacity: pressed ? 0.6 : 1 })}>
       <Text style={styles.foodName}>{foodLabel(food)}</Text>
-      <Text style={{ color: colors.secondary, fontSize: 12 }}>{food.provenance.source === 'openFoodFacts' ? 'Open Food Facts · label reviewed' : saved ? 'Your library' : food.provenance.source === 'matvaretabellen' ? 'Matvaretabellen' : 'Personal food'} · {display(food.nutrition.kcal, 0)} kcal / 100 {food.referenceUnit}</Text>
+      <Text style={{ color: colors.secondary, fontSize: 12 }}>{food.provenance.source === 'openFoodFacts' ? 'Open Food Facts · label reviewed' : food.provenance.source === 'confirmedOCR' ? 'Scanned label · reviewed' : saved ? 'Your library' : food.provenance.source === 'matvaretabellen' ? 'Matvaretabellen' : 'Personal food'} · {display(food.nutrition.kcal, 0)} kcal / 100 {food.referenceUnit}</Text>
     </Pressable>
     {onEdit && <TextButton label="Edit" accessibilityLabel={`Edit label for ${food.name}`} onPress={onEdit} />}
     {onSave ? <IconButton name={saved ? 'check' : 'bookmark'} label={`Save ${food.name}`} onPress={onSave} /> : <IconButton name="plus" label={`Add ${food.name}`} onPress={onSelect} />}

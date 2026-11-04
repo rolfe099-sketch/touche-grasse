@@ -35,3 +35,9 @@ README screenshots show the actual app with isolated catalog-derived test meals.
 ## openGym
 
 openGym is an independent project referenced as inspiration for community ownership. No openGym source, exercise database or exercise media is bundled.
+
+## Local nutrition-label recognition
+
+Native recognition uses pinned `expo-ocr-kit` 0.1.4 (published package metadata: MIT, author ManojkanthR), through Apple Vision on iOS and ML Kit on Android. [Upstream source](https://github.com/ManojKanth/expo-ocr-kit). No upstream WebView is used by the app.
+
+Browser recognition uses Tesseract.js 7.0.0 and its core under Apache-2.0, with the English and Norwegian `4.0.0_best_int` traineddata from `@tesseract.js-data/eng` and `/nor` 1.0.0. Those npm package wrappers declare MIT; the underlying [Tessdata distribution](https://github.com/naptha/tessdata) supplies an Apache-2.0 license. License texts and attribution are retained in `apps/mobile/assets/licenses/`; `prepare:ocr` copies them beside the generated, self-hosted OCR assets. Generated engines/models are not committed to Git. Photos are not uploaded to these projects or an OCR service.

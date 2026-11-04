@@ -130,8 +130,9 @@ test('manual per-100ml food, unknown nutrient and cached barcode round trip', as
   await page.getByRole('textbox', { name: 'Energy · kcal', exact: true }).fill('40');
   await page.getByRole('textbox', { name: 'Protein · g', exact: true }).fill('0');
   await page.getByRole('textbox', { name: 'Carbs · g', exact: true }).fill('10');
+  await page.getByRole('textbox', { name: 'Amount to add · ml', exact: true }).fill('250');
   await page.getByRole('button', { name: 'Confirm and add', exact: true }).click();
-  await page.getByTestId('quantity-0').fill('250');
+  await expect(page.getByTestId('quantity-0')).toHaveValue('250');
   await page.getByTestId('commit-food').click();
   await expect(page.getByTestId('nutrition-kcal')).toHaveText('100');
   await expect(page.getByText('– means a nutrient value is unknown.', { exact: true })).toBeVisible();

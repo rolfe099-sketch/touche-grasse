@@ -10,6 +10,7 @@ import { openStorage } from '../storage/open';
 import { colors, serif } from '../ui/theme';
 import { RecoveryMeta, RecoveryService } from '../domain/recovery';
 import { openRecoveryPort } from '../platform/recovery';
+import { LabelForm } from '../domain/nutritionLabel';
 
 type State = { repo: Repository; revision: number; draft: Draft; setDraft: (draft: Draft) => void;
   run: (action: () => Promise<unknown>, success?: string, syncDraft?: boolean) => Promise<boolean>;
@@ -17,6 +18,7 @@ type State = { repo: Repository; revision: number; draft: Draft; setDraft: (draf
   recovery?: RecoveryService; recoveryRevision: number; recoveryError: string | null;
   saveRecovery: (reason?: RecoveryMeta['reason']) => Promise<RecoveryMeta | null>;
   saveRepeatAmounts: (reviewId: string, amounts: string[]) => Promise<void>;
+  saveLabelDraft: (key: string, form: LabelForm | null) => Promise<void>;
   restoreBackup: (json: string, recoverMissing?: boolean) => Promise<void> };
 const Context = createContext<State | null>(null);
 let boot: Promise<Repository> | undefined;
@@ -80,6 +82,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     catch (reason) { setRecoveryError('The latest recovery copy could not be saved. Earlier copies are kept.'); throw reason; }
   };
   return <Context.Provider value={{ repo, draft, revision, busy, error, notice, run,
+    async saveLabelDraft(key, form) { await repo.saveLabelDraft(key, form); setRevision(value => value + 1); },
     async saveRepeatAmounts(reviewId, amounts) {
       try { await repo.saveRepeatAmounts(reviewId, amounts); setRevision(value => value + 1); }
       catch (reason) { setError('Your repeat changes could not be saved. Keep the editor open and retry logging.'); throw reason; }

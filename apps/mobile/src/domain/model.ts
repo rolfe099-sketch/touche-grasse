@@ -16,6 +16,7 @@ export const foodSchema = z.object({
   gramsPerMilliliter: decimalSchema.nullable().optional(), gramsPerMeasure: z.record(z.string(), decimalSchema),
   provenance: z.object({ source: z.enum(['matvaretabellen', 'manual', 'confirmedOCR', 'openFoodFacts']), sourceID: z.string(),
     sourceURL: z.string().optional(), retrievedAt: z.string(), nutrientSources: z.record(z.string(), z.string()),
+    labelScan: z.object({ engine: z.enum(['platform', 'tesseract']), scannedAt: z.iso.datetime(), confirmedAt: z.iso.datetime(), basis: z.string().max(300), originalNutrition: nutritionSchema }).optional(),
     license: z.literal('ODbL-1.0').optional(), labelReview: z.object({ confirmedAt: z.iso.datetime(), originalName: z.string().max(300), originalNutrition: nutritionSchema, originalReferenceUnit: z.enum(['g', 'ml']).nullable(), nutritionSource: z.string().max(200) }).optional() }),
 });
 export const ingredientSchema = z.object({ id: z.string(), food: foodSchema, quantity: decimalSchema, unit: unitSchema });

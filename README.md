@@ -71,7 +71,7 @@ The exported web app supports an offline reload after its first successful onlin
 ## Current limits
 
 - Physical iPhone behavior, permissions, native speech and camera scanning still require device testing. An internal iOS development build has been produced; it is not an App Store release, and native binaries are not committed to this repository.
-- New barcodes require an internet connection and package review. Open Food Facts coverage and completeness vary; unsupported/prepared-only nutrition falls back to label entry. Nutrition-label OCR is not implemented. [Lookup and recovery details](docs/BARCODES_AND_RECOVERY.md).
+- New barcodes require an internet connection and package review. Open Food Facts coverage and completeness vary; unsupported/prepared-only nutrition falls back to label entry. Nutrition-label scanning uses local OCR with an editable review; it needs the updated native build on iPhone. [Label scanning details](docs/LABEL_SCANNING.md). [Lookup and recovery details](docs/BARCODES_AND_RECOVERY.md).
 - Voice uses platform/browser speech recognition; availability, processing location and accuracy depend on the runtime. Commands cover implemented meal/recipe operations, not unrestricted assistant behavior.
 - There is no cloud sync. Recovery copies remain on the same device/origin and cannot survive uninstalling or clearing all app/site data. Export elsewhere for that. Copies and JSON exports contain personal data and are not encrypted by the app.
 - The bundled Matvaretabellen catalog is a dated snapshot. Reviewed packaged records stay as confirmed until explicitly replaced; history always retains its snapshots. The app does not infer cooking yield or oil absorption.

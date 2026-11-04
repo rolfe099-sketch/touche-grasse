@@ -54,5 +54,6 @@ jobs:
             verification/barcode
             verification/recovery
             verification/repeat-meals
+            verification/label-scanning
             apps/mobile/test-results
           retention-days: 7

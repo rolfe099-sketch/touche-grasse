@@ -15,6 +15,7 @@ import { D, emptyDraft, Food, nutrients, Recipe, recipeTotal } from '../src/doma
 import catalogJSON from '../src/data/catalog.json';
 import { emptyTargets, targetOn } from '../src/domain/targets';
 import { confirmBarcodeProduct, parseBarcodeProduct } from '../src/domain/barcode';
+import { applyLabelColumn, parseNutritionLabel, reviewedLabelFood } from '../src/domain/nutritionLabel';
 import { milkCode, milkProduct } from './barcode-fixture';
 
 const catalog = catalogJSON as Food[], oil = catalog.find(f => f.id === 'mvt:08.019')!;
@@ -32,6 +33,28 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  it('retains scanned label drafts, atomically confirms them without eating food and keeps historical OCR snapshots', async () => {
+    const storage = await adapter(), repo = await setup(storage); await repo.saveDraft(draftFor()); const active = structuredClone(repo.draft);
+    const scan = parseNutritionLabel({ engine: 'platform', text: 'Per 100 g\nEnergy 400 kcal\nFat 20 g\nCarbohydrate 30 g\nProtein 25 g\nFiber 5 g', blocks: [] });
+    const form = applyLabelColumn({ id: 'label-product', name: 'Reviewed test product', barcode: milkCode, basis: 'g', amount: '15', values: { kcal: '', protein: '', carbohydrate: '', fat: '', fiber: '' } }, scan, 0);
+    await repo.saveLabelDraft('new:label', form); const reopened = await setup(storage); expect(reopened.quickEntry.labelDrafts?.['new:label']).toEqual(form); expect(reopened.logs).toEqual([]);
+    const food = reviewedLabelFood(form), draft = { ...reopened.draft, lines: [...reopened.draft.lines, { id: randomUUID(), query: food.name, food, quantityText: '15', unit: 'g' as const, entrySource: 'product' as const }] };
+    await reopened.saveFood(food, draft, 'new:label'); expect(reopened.logs).toEqual([]); expect(reopened.draft.lines[0]).toEqual(active.lines[0]); expect(reopened.quickEntry.labelDrafts?.['new:label']).toBeUndefined();
+    expect(matchIngredient(food.name, reopened.index, reopened.quickEntry).food).toBeNull();
+    await reopened.logDraft(reopened.draft); const history = structuredClone(reopened.logs); expect(history.find(log => log.snapshot.kind === 'food' && log.snapshot.ingredient.food.id === food.id)?.nutrition).toEqual({ kcal: '60', protein: '3.75', carbohydrate: '4.5', fat: '3', fiber: '0.75' });
+    expect(reopened.quickEntry.matches['reviewed test product']).toBeUndefined();
+    const corrected = reviewedLabelFood({ ...form, values: { ...form.values, kcal: '410' } }, food); await reopened.saveFood(corrected); expect(reopened.logs).toEqual(history);
+    const restored = await setup(await adapter()); await restored.restoreJSON(await reopened.exportJSON()); expect(restored.foods.find(item => item.id === food.id)?.provenance.labelScan?.originalNutrition.kcal).toBe('400'); expect([...restored.logs].sort((a,b)=>a.id.localeCompare(b.id))).toEqual([...history].sort((a,b)=>a.id.localeCompare(b.id)));
+    await restored.close(); await reopened.close();
+  });
+  it('failed label confirmation preserves the review draft and rejects duplicate canonical barcodes without partial changes', async () => {
+    const storage = await adapter(); let fail = false; const repo = await setup({ ...storage, commit: (changes, revision) => fail ? Promise.reject(new Error('simulated disk failure')) : storage.commit(changes, revision) });
+    const form = { id: 'scanned', name: 'Test label', barcode: milkCode, basis: 'g' as const, amount: '10', values: { kcal: '400', protein: '25', carbohydrate: '30', fat: '20', fiber: '' } };
+    await repo.saveLabelDraft('new:label', form); const before = await repo.exportJSON(); fail = true;
+    await expect(repo.saveFood(reviewedLabelFood(form), repo.draft, 'new:label')).rejects.toThrow('disk failure'); expect(await repo.exportJSON()).toBe(before);
+    fail = false; await repo.saveFood({ ...reviewedLabelFood(form), id: 'other', barcode: '07038010001918' });
+    await expect(repo.saveFood(reviewedLabelFood(form), repo.draft, 'new:label')).rejects.toThrow('already has'); expect(repo.quickEntry.labelDrafts?.['new:label']).toEqual(form); await repo.close();
+  });
   it('saves a reviewed barcode and its draft atomically, reopens, logs exact ml nutrition and preserves historical snapshots', async () => {
     const storage = await adapter(), repo = await setup(storage); await repo.logDraft(draftFor()); const historical = structuredClone(repo.logs);
     const candidate = parseBarcodeProduct(milkProduct(), milkCode)!;

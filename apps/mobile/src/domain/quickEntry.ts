@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Draft, draftSchema, Food, foodNutrition, IdFactory, Line, lineIngredient, LogEntry, parseEntry, total } from './model';
 import { FoodIndex, normalize } from './search';
 import { cookingRecordAllowed, preparationNeedsChoice } from './foodLanguage';
+import { labelFormSchema } from './nutritionLabel';
 import { repeatReviewSchema } from './repeatMeal';
 
 // References only: nutrients always come from the current verified Food record.
@@ -10,6 +11,7 @@ export const quickEntrySchema = z.object({
   favorites: z.array(z.string().max(200)).max(20000),
   entryMethod: z.enum(['text', 'voice', 'scan']).optional(),
   repeatReview: repeatReviewSchema.optional(),
+  labelDrafts: z.record(z.string().max(500), labelFormSchema).refine(value => Object.keys(value).length <= 20, 'Finish or discard an earlier label draft first.').optional(),
 });
 export type QuickEntryPreferences = z.infer<typeof quickEntrySchema>;
 export const emptyPreferences = (): QuickEntryPreferences => ({ matches: {}, favorites: [] });
@@ -31,7 +33,7 @@ export function matchIngredient(query: string, index: FoodIndex, preferences: Qu
   const learned = previous && cookingRecordAllowed(query, previous) ? previous : undefined;
   // A provider's generic product name/alias is not a confirmed cooking query.
   // Barcode reuse is immediate; text matching needs its own explicit choice.
-  const exact = index.exact(query).filter(food => food.provenance.source !== 'openFoodFacts' && cookingRecordAllowed(query, food));
+  const exact = index.exact(query).filter(food => !['openFoodFacts', 'confirmedOCR'].includes(food.provenance.source) && cookingRecordAllowed(query, food));
   const food = learned || (exact.length === 1 && !preparationNeedsChoice(query, exact[0]) ? exact[0] : null);
   const candidates = index.search(query);
   return { food, reason: learned ? 'remembered' : food ? 'exact' : 'needs-choice', candidates: food ? [food, ...candidates.filter(f => f.id !== food.id)] : candidates };

@@ -59,7 +59,7 @@ export default function Entry() {
   }
   function focus(id: string) { setUnitsFor(undefined); setEditing(editing === id && draft.lines.find(line => line.id === id)?.food ? undefined : id); setFilter(undefined); setMore(false); setAdding(false); }
   function choose(food: Food, lineId?: string) {
-    const next = lineId ? editLiveLine(draft, lineId, { food }) : { ...draft, lines: [...draft.lines, { id: repo.id(), query: food.name, quantityText: '100', unit: food.referenceUnit, food, ...(food.provenance.source === 'openFoodFacts' ? { entrySource: 'product' as const } : {}) }] };
+    const next = lineId ? editLiveLine(draft, lineId, { food }) : { ...draft, lines: [...draft.lines, { id: repo.id(), query: food.name, quantityText: '100', unit: food.referenceUnit, food, ...(['openFoodFacts', 'confirmedOCR'].includes(food.provenance.source) ? { entrySource: 'product' as const } : {}) }] };
     Keyboard.dismiss(); setUnitsFor(undefined);
     setDraft(next); setEditing(next.lines.find(line => !line.food)?.id); setFilter(undefined); setMore(false); setQuery(''); setAdding(false);
   }

@@ -20,6 +20,9 @@ self.addEventListener('fetch', event => {
     if (event.request.mode === 'navigate') {
       try { return await fetch(event.request); } catch { return await caches.match('/index.html'); }
     }
-    return await caches.match(event.request) || fetch(event.request);
+    const cached = await caches.match(event.request); if (cached) return cached;
+    const response = await fetch(event.request);
+    if (response.ok && new URL(event.request.url).pathname.startsWith('/ocr/')) { if (!cacheName) await manifest(); await (await caches.open(cacheName)).put(event.request, response.clone()); }
+    return response;
   })());
 });

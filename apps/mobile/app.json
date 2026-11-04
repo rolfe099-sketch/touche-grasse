@@ -30,7 +30,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Use the camera to read food barcodes.",
+          "cameraPermission": "Use the camera to read food barcodes and nutrition labels.",
           "recordAudioAndroid": false,
           "microphonePermission": "Use the microphone for meal commands when you tap Voice."
         }
@@ -38,8 +38,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Choose your own food photos for your recipes.",
-          "cameraPermission": "Use the camera to read food barcodes.",
+          "photosPermission": "Choose nutrition-label photos or your own recipe photos.",
+          "cameraPermission": "Use the camera to read food barcodes and nutrition labels.",
           "microphonePermission": "Use the microphone for meal commands when you tap Voice."
         }
       ],

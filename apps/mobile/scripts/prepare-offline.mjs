@@ -14,5 +14,5 @@ async function walk(dir) {
 const files = (await walk(root)).sort();
 const hash = createHash('sha256');
 for (const file of files) hash.update(await readFile(file));
-await writeFile(path.join(root, 'offline-manifest.json'), JSON.stringify({ version: hash.digest('hex').slice(0, 16), files: files.map(f => '/' + path.relative(root, f).split(path.sep).join('/')) }));
+await writeFile(path.join(root, 'offline-manifest.json'), JSON.stringify({ version: hash.digest('hex').slice(0, 16), files: files.filter(f => path.relative(root, f).split(path.sep)[0] !== 'ocr').map(f => '/' + path.relative(root, f).split(path.sep).join('/')) }));
 console.log(`Offline preview manifest: ${files.length} local assets`);

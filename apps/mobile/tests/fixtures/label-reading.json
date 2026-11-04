@@ -1,0 +1,203 @@
+{
+  "fixture": "Real Tesseract.js 7.0.0 output from the synthetic Norwegian label rendered in label-scan.spec.ts; no product or user data",
+  "sourceImageSHA256": "728d3dc905c95e42d113ba4de0d28f0941eeb5e4676a3dea9b5f08cd626cbb90",
+  "engine": "tesseract",
+  "text": "Naeringsinnhold\n\nPer 100 g\n\nEnergi\n\n1680 kJ / 400 kcal\n\nFett\n\n20g\n\nKarbohydrat\n\n30g\n\nProtein\n\n25¢\n\nKostfiber\n\nS59\n",
+  "blocks": [
+    {
+      "text": "Naeringsinnhold\n\n",
+      "confidence": 67,
+      "box": {
+        "x": 59,
+        "y": 66,
+        "width": 406,
+        "height": 50
+      }
+    },
+    {
+      "text": "Per 100 g\n\n",
+      "confidence": 91,
+      "box": {
+        "x": 503,
+        "y": 165,
+        "width": 185,
+        "height": 41
+      }
+    },
+    {
+      "text": "Energi\n\n",
+      "confidence": 95,
+      "box": {
+        "x": 58,
+        "y": 271,
+        "width": 122,
+        "height": 41
+      }
+    },
+    {
+      "text": "1680 kJ / 400 kcal\n\n",
+      "confidence": 90,
+      "box": {
+        "x": 505,
+        "y": 271,
+        "width": 347,
+        "height": 32
+      }
+    },
+    {
+      "text": "Fett\n\n",
+      "confidence": 96,
+      "box": {
+        "x": 58,
+        "y": 367,
+        "width": 73,
+        "height": 32
+      }
+    },
+    {
+      "text": "20g\n\n",
+      "confidence": 67,
+      "box": {
+        "x": 501,
+        "y": 367,
+        "width": 82,
+        "height": 41
+      }
+    },
+    {
+      "text": "Karbohydrat\n\n",
+      "confidence": 92,
+      "box": {
+        "x": 58,
+        "y": 463,
+        "width": 237,
+        "height": 41
+      }
+    },
+    {
+      "text": "30g\n\n",
+      "confidence": 75,
+      "box": {
+        "x": 502,
+        "y": 463,
+        "width": 81,
+        "height": 41
+      }
+    },
+    {
+      "text": "Protein\n\n",
+      "confidence": 95,
+      "box": {
+        "x": 58,
+        "y": 559,
+        "width": 134,
+        "height": 32
+      }
+    },
+    {
+      "text": "25¢\n\n",
+      "confidence": 58,
+      "box": {
+        "x": 501,
+        "y": 559,
+        "width": 82,
+        "height": 41
+      }
+    },
+    {
+      "text": "Kostfiber\n\n",
+      "confidence": 92,
+      "box": {
+        "x": 58,
+        "y": 655,
+        "width": 171,
+        "height": 32
+      }
+    },
+    {
+      "text": "S59\n",
+      "confidence": 57,
+      "box": {
+        "x": 502,
+        "y": 655,
+        "width": 57,
+        "height": 41
+      }
+    }
+  ],
+  "alternative": {
+    "text": "Næringsinnhold\nPer 100 g\nEnergi                   1680 kJ / 400 kcal\nFett                       20g\nKarbohydrat             30g\nProtein                   25g\nKostfiber                  5g\n",
+    "blocks": [
+      {
+        "text": "Næringsinnhold\n",
+        "confidence": 96,
+        "box": {
+          "x": 59,
+          "y": 66,
+          "width": 406,
+          "height": 50
+        }
+      },
+      {
+        "text": "Per 100 g\n",
+        "confidence": 43,
+        "box": {
+          "x": 503,
+          "y": 165,
+          "width": 185,
+          "height": 41
+        }
+      },
+      {
+        "text": "Energi                   1680 kJ / 400 kcal\n",
+        "confidence": 89,
+        "box": {
+          "x": 58,
+          "y": 267,
+          "width": 794,
+          "height": 49
+        }
+      },
+      {
+        "text": "Fett                       20g\n",
+        "confidence": 86,
+        "box": {
+          "x": 58,
+          "y": 363,
+          "width": 525,
+          "height": 49
+        }
+      },
+      {
+        "text": "Karbohydrat             30g\n",
+        "confidence": 90,
+        "box": {
+          "x": 58,
+          "y": 463,
+          "width": 525,
+          "height": 41
+        }
+      },
+      {
+        "text": "Protein                   25g\n",
+        "confidence": 90,
+        "box": {
+          "x": 58,
+          "y": 559,
+          "width": 525,
+          "height": 41
+        }
+      },
+      {
+        "text": "Kostfiber                  5g\n",
+        "confidence": 92,
+        "box": {
+          "x": 58,
+          "y": 651,
+          "width": 501,
+          "height": 49
+        }
+      }
+    ]
+  }
+}

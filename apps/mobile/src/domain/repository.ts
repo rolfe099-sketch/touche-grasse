@@ -7,6 +7,7 @@ import { emptyPreferences, liveTextIsCurrent, quickEntrySchema, QuickEntryPrefer
 import { TargetChange, targetChangeSchema, TargetValues, targetValuesSchema } from './targets';
 import { sameBarcode } from './barcode';
 import { makeRepeatReview, repeatReviewSchema, reviewRepeatedMeal } from './repeatMeal';
+import { LabelForm, labelFormSchema } from './nutritionLabel';
 
 const archiveSchema = z.object({ format: z.literal('touche-grasse'), version: z.literal(2), foods: z.array(foodSchema).max(20000), logs: z.array(logSchema).max(100000), recipes: z.array(recipeSchema).max(10000), draft: draftSchema, profile: profileSchema.optional(), recipeDrafts: z.record(z.string(), recipeDraftSchema).optional(), quickEntry: quickEntrySchema.optional(), preparedBatches: z.array(preparedBatchSchema).max(20000).optional(), targets: z.array(targetChangeSchema).max(20000).optional() });
 function utf8Size(value: string) {
@@ -97,13 +98,25 @@ export class Repository {
       map.set(food.barcode, food.id);
     }
   }
-  saveFood(input: Food, inputDraft?: Draft) {
+  saveFood(input: Food, inputDraft?: Draft, labelDraftKey?: string) {
     const food = validateFood(structuredCopy(input));
     const draft = inputDraft ? draftSchema.parse(structuredCopy(inputDraft)) : undefined;
     return this.serialized(async () => {
+      if (labelDraftKey && food.barcode && this.foods.some(item => item.id !== food.id && item.barcode && sameBarcode(item.barcode, food.barcode!))) throw new Error('This barcode already has a saved food. Edit that label in Library.');
       const foods = [...this.foods.filter(f => f.id !== food.id), food]; this.checkBarcodes(foods);
-      await this.commit([put('food', food.id, food), ...(draft ? [put('draft', 'active', draft)] : [])]);
+      const labelDrafts = { ...this.quickEntry.labelDrafts }; if (labelDraftKey) delete labelDrafts[labelDraftKey];
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, labelDrafts });
+      await this.commit([put('food', food.id, food), ...(draft ? [put('draft', 'active', draft)] : []), ...(labelDraftKey ? [put('quickEntry', 'preferences', preferences)] : [])]);
+      if (labelDraftKey) this.quickEntry = preferences;
       this.foods = foods; if (draft) this.draft = draft; this.sortAndIndex();
+    });
+  }
+  saveLabelDraft(key: string, input: LabelForm | null) {
+    z.string().min(1).max(500).parse(key); const form = input ? labelFormSchema.parse(structuredCopy(input)) : null;
+    return this.serialized(async () => {
+      const labelDrafts = { ...this.quickEntry.labelDrafts }; if (form) labelDrafts[key] = form; else delete labelDrafts[key];
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, labelDrafts });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
     });
   }
   saveDraft(input: Draft) {
@@ -378,7 +391,7 @@ export class Repository {
       const recipeDrafts = { ...backup.recipeDrafts, ...this.recipeDrafts };
       const matches = { ...backup.quickEntry?.matches };
       for (const [query, match] of Object.entries(this.quickEntry.matches)) if (options.recoverMissing || !matches[query] || matches[query].confirmedAt <= match.confirmedAt) matches[query] = match;
-      const preferences = quickEntrySchema.parse({ entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
+      const preferences = quickEntrySchema.parse({ entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, labelDrafts: backup.quickEntry?.labelDrafts || this.quickEntry.labelDrafts ? { ...backup.quickEntry?.labelDrafts, ...this.quickEntry.labelDrafts } : undefined, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
       const clearingDeletion = this.isDeletionUndo;
       await this.commit([...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : []), ...(clearingDeletion ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
       if (clearingDeletion) { this.undo = []; this.deletionUndo = []; }

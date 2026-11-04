@@ -51,3 +51,5 @@ For an iOS JavaScript packaging check, use `npx expo export --platform ios --out
 Food data and font/logo attribution are in [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md). Original code is AGPL-3.0-only. Optional support: https://buymeacoffee.com/endoftheend.
 
 The architecture and status documents in this folder describe implementation details and dated earlier milestones. The root README is the current public entry point.
+
+Label scanning runs locally and requires a rebuilt development client for native OCR. Run `npm run prepare:ocr` before a direct Expo web start; `npm run web` and `npm run build:web` prepare the self-hosted models automatically. See [label scanning](../../docs/LABEL_SCANNING.md).

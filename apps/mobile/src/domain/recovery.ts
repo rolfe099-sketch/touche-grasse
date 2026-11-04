@@ -14,7 +14,7 @@ export function inspectRecoveryJSON(json: string) {
   if (json.length > 50000000 || byteLength(json) > 50000000) throw new Error('This recovery copy exceeds 50 MB.');
   let value; try { value = JSON.parse(json); } catch { throw new Error('This recovery copy is unreadable. Other copies are kept.'); }
   if (value?.format !== 'touche-grasse' || value.version !== 2 || !Array.isArray(value.logs) || !Array.isArray(value.foods) || !Array.isArray(value.recipes) || !value.draft) throw new Error('This is not a Touche Grasse recovery copy.');
-  return { logs: value.logs.length as number, recipes: value.recipes.length as number, meaningful: !!(value.logs.length || value.foods.length || value.recipes.length || value.draft.text || value.draft.lines?.length || value.draft.recipeName || value.draft.splitPlan || value.quickEntry?.repeatReview || value.targets?.length || value.preparedBatches?.length || Object.keys(value.recipeDrafts ?? {}).length) };
+  return { logs: value.logs.length as number, recipes: value.recipes.length as number, meaningful: !!(value.logs.length || value.foods.length || value.recipes.length || value.draft.text || value.draft.lines?.length || value.draft.recipeName || value.draft.splitPlan || value.quickEntry?.repeatReview || Object.keys(value.quickEntry?.labelDrafts ?? {}).length || value.targets?.length || value.preparedBatches?.length || Object.keys(value.recipeDrafts ?? {}).length) };
 }
 export class RecoveryService {
   private queue: Promise<unknown> = Promise.resolve(); private lastJSON?: string;
