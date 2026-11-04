@@ -8,7 +8,13 @@ export function spokenNumbers(text: string): string {
   });
 }
 export function ingredientText(input: string): string {
-  return spokenNumbers(input).trim().replace(/^(?:please\s+)?(?:add|log|i ate|i had|i have eaten)\s+/i, '').replace(/[.!?]+$/, '')
+  const measured = String.raw`\d+(?:[.,]\d+)?\s*(?:kilograms?|kg|grams?|g|millilit(?:er|re)s?|ml|lit(?:er|re)s?|l|tbsp|tsp|pieces?)\b`;
+  const verb = String.raw`(?:please\s+)?(?:add|include|log|legg\s+til)`;
+  const connector = String.raw`(?:and(?:\s+(?:then|also))?|then|plus|also|as\s+well\s+as|og(?:\s+så)?|så|deretter|pluss)`;
+  return spokenNumbers(input).trim().replace(new RegExp(String.raw`^(?:(?:${connector}\s+)?${verb}|i ate|i had|i have eaten)\s+`, 'i'), '').replace(/[.!?]+$/, '')
     .replace(/\b(grams?|kilograms?|millilit(?:er|re)s?|lit(?:er|re)s?|g|kg|ml|l)\s+of\s+/gi, '$1 ')
-    .replace(/\s+(?:and|plus)\s+(?=\d+(?:[.,]\d+)?\s*(?:g\b|grams?\b|kg\b|kilograms?\b|ml\b|millilit|l\b|lit(?:er|re)))/gi, ', ');
+    // Only a new measured clause creates a boundary. Food names such as
+    // "macaroni and cheese" and decimal commas must remain intact.
+    .replace(new RegExp(String.raw`(?:\s*[,;.!?]\s*|\s+)${connector}\s+(?:${verb}\s+)?(?=${measured})`, 'gi'), ', ')
+    .replace(new RegExp(String.raw`(?:\s*[,;.!?]\s*|\s+)${verb}\s+(?=${measured})`, 'gi'), ', ');
 }

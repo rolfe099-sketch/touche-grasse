@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput as NativeInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { display, Food, lineIngredient, meals, Recipe, Unit } from '../src/domain/model';
-import { editLiveLine, matchIngredient, mealProgress, recentMealBatches, updateLiveText } from '../src/domain/quickEntry';
+import { editLiveLine, liveTextIsCurrent, matchIngredient, mealProgress, recentMealBatches, updateLiveText } from '../src/domain/quickEntry';
 import { applyCommand } from '../src/domain/commands';
 import { foodLabel } from '../src/domain/foodLanguage';
 import { normalize } from '../src/domain/search';
@@ -72,8 +72,8 @@ export default function Entry() {
     } catch (error) { setDraft({ ...draft, text }); setParseError(error instanceof Error ? error.message : 'Check meal text'); }
   }
   useEffect(() => {
-    if (draft.text.trim() && !draft.textRows) {
-      try { setDraft(updateLiveText(draft.text, draft, repo.index, repo.quickEntry, repo.id)); } catch { /* Keep legacy source text for correction. */ }
+    if (draft.text.trim() && !liveTextIsCurrent(draft)) {
+      try { setDraft(updateLiveText(draft.text, draft, repo.index, repo.quickEntry, repo.id)); } catch { /* Keep source text for correction, including older parser drafts. */ }
     }
   }, [draft, repo, setDraft]);
   const splitting = draft.splitPlan;

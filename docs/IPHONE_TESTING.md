@@ -2,7 +2,7 @@
 
 The active application is `apps/mobile` (Expo), not the original Swift prototype. The owner's test target is an **iPhone 13 Pro**. Record the exact iOS version from Settings → General → About; "latest" is not a reproducible version.
 
-On 4 November 2026, the owner confirmed installation and Today launch, correct 10g olive-oil nutrition, repeat, undo, reopen persistence, and the new entry-delete/Undo flow on that physical iPhone. Other device checks below remain pending; this does not certify voice or camera execution. The exact iOS version remains unrecorded.
+On 4 November 2026, the owner confirmed installation and Today launch, correct 10g olive-oil nutrition, repeat, undo, reopen persistence, and the new entry-delete/Undo flow on that physical iPhone. Single-ingredient speech worked; multi-ingredient speech captured the words but exposed a clause-parsing failure. After the fix and an explicit development-client Reload, the owner confirmed that the existing sentence split into three rows. Other device checks below remain pending. The exact iOS version remains unrecorded.
 
 ## What Windows checks establish
 
@@ -55,22 +55,24 @@ The SDK 54 lockfile audit on 4 November 2026 reports 48 advisory entries (6 high
 
 References: [Expo development builds](https://docs.expo.dev/develop/development-builds/introduction/), [internal distribution](https://docs.expo.dev/build/internal-distribution/), [iOS Simulator restrictions](https://docs.expo.dev/workflow/ios-simulator/).
 
-## Physical acceptance — all pending until performed
+## Physical acceptance
 
 Use a separate test diary or export first. Record model, exact iOS version, runtime/build ID, locale, date, pass/fail and screenshots. Never publish a personal backup or recording.
 
 | Check | Expected behavior | Device result |
 | --- | --- | --- |
-| Fresh launch and relaunch | 2,121 catalog foods available; saved diary retained | Pending |
+| Fresh launch and relaunch | Catalog available; saved diary retained | Today opens and olive-oil entry survives relaunch, owner-confirmed on iPhone 13 Pro; full catalog not counted on device |
+| Single ingredient | `10g olive oil` uses the verified record | 89 kcal and 9.9 g fat, owner-confirmed on iPhone 13 Pro |
 | Whole meal | Enter `200g chicken, 150g pasta, 15g pesto, 10g olive oil, 50g parmesan`; choose raw chicken breast, dry plain pasta and the reviewed pesto | Pending |
 | Quantity correction | Change chicken 200→250→200; other quantities stay 150/15/10/50; number pad has Done | Pending |
 | Keyboard and safe areas | Focus first/last ingredient, manual nutrients, targets and portion amounts; controls remain reachable; drag dismisses keyboard; no home-indicator overlap | Pending |
 | One-action meal log | All resolved rows log together; keyboard does not require a separate dismiss tap first | Pending |
 | Six portions | Save six servings without logging; no final weight assumed; log one serving = exactly one-sixth; five remain | Pending |
-| Repeat and undo | Repeat one meal or serving, undo, relaunch; counts and totals remain correct | Pending |
+| Repeat and undo | Repeat one meal or serving, undo, relaunch; counts and totals remain correct | Olive-oil repeat to 178 kcal, Undo to 89 kcal and relaunch passed, owner-confirmed on iPhone 13 Pro; saved serving pending |
 | Delete an entry | Trash beside a diary entry removes only that entry; Undo restores its original values | Passed on iPhone 13 Pro, owner-confirmed |
 | Interrupted draft | Switch tabs, lock/unlock, background and relaunch; unfinished entry stays editable | Pending |
 | Voice first permission | A requested permission prompt may briefly interrupt the app; capture begins only for the still-active request | Pending |
+| Multi-ingredient speech | `10 g olive oil then add 100 grams chicken and add 50 g apple` creates three rows, with product choices retained for review | Three rows after explicit Reload, owner-confirmed on iPhone 13 Pro; parsing, draft repair and confirmed product reuse also covered by regression tests |
 | Voice denial/recovery | Deny microphone/speech; useful error, Settings link and immediate typing fallback; enable permission and explicitly retry | Pending |
 | Capture cancellation | Navigate away or background while permission is pending; resolving it must not start capture | Pending |
 | Voice interruption | Home/lock/phone-call interruption stops capture; returning does not restart it; no late command logs a meal | Pending |

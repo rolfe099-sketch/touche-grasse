@@ -6,10 +6,47 @@ import { applyCommand } from '../src/domain/commands';
 import { emptyPreferences, reviewInput } from '../src/domain/quickEntry';
 import { FoodIndex } from '../src/domain/search';
 import { createVoiceController } from '../src/platform/voice.web';
+import { ingredientText } from '../src/domain/naturalInput';
 const index = new FoodIndex(); (catalog as Food[]).forEach(food => index.add(food));
 const preferences = emptyPreferences();
 function command(text: string, draft = emptyDraft(randomUUID)) { return applyCommand(text, draft, index, preferences, randomUUID); }
 function change(text: string, draft = emptyDraft(randomUUID)): Draft { const result = command(text, draft); if (result.kind !== 'draft') throw new Error('Expected draft'); return result.draft; }
+it.each([
+  '10 g olive oil then add 100 grams chicken and add 50 g apple',
+  'Add ten grams of olive oil then add one hundred grams chicken and add fifty grams of apple.',
+  '10g olive oil, then add 100g chicken, and add 50g apple.',
+  'Add 10g olive oil. Then add 100g chicken. And add 50g apple.',
+  '10g olive oil plus 100g chicken as well as 50g apple',
+  '10g olive oil and then please add 100g chicken and also add 50g apple',
+  '10g olive oil add 100g chicken add 50g apple',
+  'Then add 10g olive oil; add 100g chicken; add 50g apple',
+])('splits a multi-ingredient transcript without treating repeated add as a food: %s', text => {
+  expect(parseEntry(text, randomUUID).map(line => [line.query, line.quantityText, line.unit])).toEqual([
+    ['olive oil', '10', 'g'], ['chicken', '100', 'g'], ['apple', '50', 'g'],
+  ]);
+  const draft = change(text); expect(draft.lines.map(line => [line.query, line.quantityText])).toEqual([['olive oil', '10'], ['chicken', '100'], ['apple', '50']]);
+  expect(draft.lines[1].food).toBeNull(); // Generic chicken still requires a verified product choice.
+  expect(ingredientText(ingredientText(text))).toBe(ingredientText(text));
+});
+it('preserves decimal commas, volumes, preparation and compound food names around spoken boundaries', () => {
+  const text = 'Add 15,5g pesto and add 100g macaroni and cheese then add 200 millilitres of milk plus 150g cooked pasta';
+  expect(parseEntry(text, randomUUID).map(line => [line.query, line.quantityText, line.unit])).toEqual([
+    ['pesto', '15,5', 'g'], ['macaroni and cheese', '100', 'g'], ['milk', '200', 'ml'], ['cooked pasta', '150', 'g'],
+  ]);
+  expect(parseEntry('100g fish and chips and 10g olive oil', randomUUID).map(line => line.query)).toEqual(['fish and chips', 'olive oil']);
+});
+it('accepts measured Norwegian joins without changing food names or guessing number words', () => {
+  expect(parseEntry('Legg til 10g olivenolje og legg til 100 gram kylling og så 50g eple', randomUUID).map(line => [line.query, line.quantityText])).toEqual([
+    ['olivenolje', '10'], ['kylling', '100'], ['eple', '50'],
+  ]);
+});
+it('does not silently execute trailing actions or invent quantities for incomplete speech', () => {
+  const action = command('10g olive oil then log it'); expect(action.kind).toBe('draft');
+  if (action.kind === 'draft') expect(action.draft.lines[0].food).toBeNull();
+  expect(parseEntry('olive oil and chicken', randomUUID)[0].quantityText).toBe('');
+  const draft = change('10g olive oil then add 100g unlisted mystery food');
+  expect(draft.lines).toHaveLength(2); expect(draft.lines[1].food).toBeNull();
+});
 it('parses natural meal phrases and number words without inventing food, amounts or preparation', () => {
   const lines = parseEntry('Add two hundred grams of chicken and ten grams of olive oil.', randomUUID);
   expect(lines.map(line => [line.query, line.quantityText, line.unit])).toEqual([['chicken', '200', 'g'], ['olive oil', '10', 'g']]);

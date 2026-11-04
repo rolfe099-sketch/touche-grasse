@@ -67,6 +67,19 @@ it('handles duplicate ingredients, reorders, deletion and independent manually a
   draft = updateLiveText('', draft, index, emptyPreferences(), randomUUID);
   expect(draft.lines.map(line => line.id)).toEqual(['manual']); expect(liveTextIsCurrent(draft)).toBe(true);
 });
+it('repairs a persisted pre-fix speech draft without losing independent selected rows', () => {
+  const text = '10 g olive oil then add 100 grams chicken and add 50 g apple';
+  const source = { id: 'old-source', query: 'olive oil then add 100 grams chicken and add 50 g apple', quantityText: '10', unit: 'g' as const };
+  const manual = { id: 'manual', query: chicken.name, quantityText: '80', unit: 'g' as const, food: chicken };
+  const draft = { ...emptyDraft(randomUUID), text, textRows: [source], lines: [{ ...source, food: null }, manual] };
+  expect(liveTextIsCurrent(draft)).toBe(false);
+  const repaired = updateLiveText(draft.text, draft, index, emptyPreferences(), randomUUID);
+  expect(repaired.lines.map(line => [line.query, line.quantityText])).toEqual([['olive oil', '10'], ['chicken', '100'], ['apple', '50'], [chicken.name, '80']]);
+  expect(repaired.lines[0].food).toEqual(oil); expect(repaired.lines[1].food).toBeNull();
+  expect(repaired.lines[3]).toEqual(manual); expect(repaired.text).toBe(text);
+  expect(liveTextIsCurrent(repaired)).toBe(true);
+  expect(updateLiveText(text, repaired, index, emptyPreferences(), randomUUID)).toEqual(repaired);
+});
 it('detects pending or stale source text and keeps remembered products editable without dropping safeguards', () => {
   const preferences = { matches: { chicken: { foodId: chicken.id, confirmedAt: new Date().toISOString() } }, favorites: [] };
   let draft = updateLiveText('200g chicken, 10ml olive oil', emptyDraft(randomUUID), index, preferences, randomUUID);
