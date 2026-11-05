@@ -168,6 +168,7 @@ test('reported unfinished native readout repairs energy and requires two explici
   await page.getByRole('button', { name: 'Confirm and add', exact: true }).click(); await page.getByTestId('commit-food').click();
   await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('488'); await expect(page.getByTestId('today-fiber')).toHaveText('3.2 g');
   await page.getByRole('button', { name: 'Undo last log', exact: true }).click();
+  await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('–');
   const saved = await exportJSON(page); expect(saved.logs).toEqual([]); expect(saved.foods[0].nutrition.protein).toBe('5.6'); expect(saved.foods[0].nutrition.fiber).toBe('3.2');
   expect(saved.foods[0].provenance.labelScan.originalNutrition.protein).toBeNull(); expect(saved.foods[0].provenance.labelScan.originalNutrition.fiber).toBeNull();
 });
