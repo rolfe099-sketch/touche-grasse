@@ -16,6 +16,7 @@ Actual implementation screenshots using isolated test meals. This is an early de
 ## What works
 
 - **Quick Log:** `200g chicken, 150g pasta, 15g pesto, 10g olive oil, 50g parmesan`. Live parsing, inline quantities, relevant suggestions, learned product choices and one-action logging with undo.
+- **Dates and meals:** inline Today/Yesterday/calendar destinations, selected-day logging from History, remembered meal choices and date-aware food commands. [Details](docs/LOGGING_DESTINATIONS.md).
 - **Verified food records:** 2,121 captured Matvaretabellen foods, Norwegian and English search, aliases, explicit raw/cooked and dry/cooked distinctions. Unresolved ingredients block logging; missing nutrients stay unknown.
 - **Nutrition:** calories, protein, carbohydrates, fat and fiber calculated with decimal arithmetic. Optional dated personal targets show remaining and over amounts without changing food calculations.
 - **Recipes and batches:** custom servings, optional measured cooked weight, logging by servings or grams, and finite saved portions for later days. Creating a batch does not log it as eaten.

@@ -33,7 +33,7 @@ export default function Today() {
   const usual = useMemo(() => frequentMealBatches(repo.logs), [repo.logs]);
   const portions = repo.preparedBatches.filter(batch => batchBalance(batch, repo.logs).numerator.gt(0)).slice(-2).reverse();
   const loggedDays = useMemo(() => new Set(index.byDay.keys()), [index]);
-  const openLog = (mode?: 'voice' | 'scan') => router.push({ pathname: '/entry', params: mode ? { mode } : {} });
+  const openLog = (mode?: 'voice' | 'scan') => router.push({ pathname: '/entry', params: { date: dayKey(date), ...(mode ? { mode } : {}) } });
   return <Screen support title="Today" header={<>
     <Pressable accessibilityRole="button" accessibilityLabel="Choose date" onPress={() => setPicker(true)} style={({ pressed }) => ({ flex: 1, minHeight: 54, opacity: pressed ? .6 : 1 })}>
       <Text accessibilityRole="header" style={styles.title}>{isToday ? 'Today' : dateLabel(date, { weekday: 'long' })}</Text>

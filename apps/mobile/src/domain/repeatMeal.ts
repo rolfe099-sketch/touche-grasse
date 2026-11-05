@@ -1,11 +1,14 @@
+import { calendarDaySchema } from './calendarDay';
 import { z } from 'zod';
-import { LogEntry, logSchema, parseAmount, PreparedBatch, snapshotNutrition, structuredCopy, total } from './model';
+import { LogEntry, logSchema, meals, parseAmount, PreparedBatch, snapshotNutrition, structuredCopy, total } from './model';
 import { assertBatchCapacity } from './portions';
 
 export const repeatReviewSchema = z.object({
   id: z.string().min(1),
   entries: z.array(logSchema).min(1).max(200),
   amounts: z.array(z.string().max(100)).min(1).max(200),
+  loggingDate: calendarDaySchema.optional(),
+  meal: z.enum(meals).optional(),
   shortcutId: z.string().max(200).optional(),
 }).refine(value => value.entries.length === value.amounts.length && new Set(value.entries.map(entry => entry.id)).size === value.entries.length, 'Check the repeat rows.');
 export type RepeatReview = z.infer<typeof repeatReviewSchema>;

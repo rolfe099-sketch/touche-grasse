@@ -1,3 +1,5 @@
+import { LoggingDestination } from './loggingDestination';
+import { loggingTime } from './calendarDay';
 import { z } from 'zod';
 import { Change, put, StorageAdapter } from '../storage/contract';
 import { D, dayKey, Draft, draftSchema, duplicateRecipe, emptyDraft, Food, foodSchema, foodNutrition, IdFactory, lineIngredient, LogEntry, logSchema, Meal, Recipe, recipePortion, recipeSchema, recipeTotal, snapshotNutrition, structuredCopy, validateFood, nutrients, profileSchema, recipeDraftSchema, Unit, PreparedBatch, preparedBatchSchema } from './model';
@@ -72,6 +74,7 @@ export class Repository {
       else if (record.kind === 'weighIn') this.weighIns.push(validateWeighIn(record.value));
       else if (record.kind === 'dayReview') this.dayReviews.push(dayReviewSchema.parse(record.value));
     }
+    if (!this.draft.text && !this.draft.lines.length && !this.draft.recipeName && !this.draft.splitPlan && !this.draft.loggingDate && this.quickEntry.lastMeal) this.draft.meal = this.quickEntry.lastMeal;
     const earliest = [this.profile.firstUsedAt, ...this.logs.flatMap(log => [log.recordedAt, ...(log.corrections ?? []).map(c => c.previous.recordedAt)])].sort()[0];
     if (!loaded.records.some(record => record.kind === 'profile') || earliest !== this.profile.firstUsedAt) await this.commit([put('profile', 'identity', { firstUsedAt: earliest })]);
     assertBatchCapacity(this.preparedBatches, this.logs);
@@ -162,9 +165,10 @@ export class Repository {
     const draft = draftSchema.parse(structuredCopy(input));
     return this.serialized(async () => {
       if (!this.voiceReady(voiceId)) return;
-      const preferences = this.voicePreferences(this.quickEntry, voiceId);
-      await this.commit([put('draft', 'active', draft), ...(voiceId ? [put('quickEntry', 'preferences', preferences)] : [])]);
-      this.draft = draft; if (voiceId) this.quickEntry = preferences;
+      const remembersMeal = draft.meal !== this.draft.meal;
+      const preferences = this.voicePreferences(remembersMeal ? quickEntrySchema.parse({ ...this.quickEntry, lastMeal: draft.meal }) : this.quickEntry, voiceId);
+      await this.commit([put('draft', 'active', draft), ...(voiceId || remembersMeal ? [put('quickEntry', 'preferences', preferences)] : [])]);
+      this.draft = draft; if (voiceId || remembersMeal) this.quickEntry = preferences;
     });
   }
   addBarcodeFood(input: Food, inputDraft: Draft, amount = '100') {
@@ -219,12 +223,13 @@ export class Repository {
     const draft = draftSchema.parse(structuredCopy(input));
     return this.serialized(async () => {
       if (!this.voiceReady(voiceId)) return;
+      const recordedAt = loggingTime(draft.loggingDate, at).toISOString();
       if (this.preparedBatches.some(batch => batch.id === draft.id)) throw new Error('This meal was saved as a batch. Log a portion from Saved portions.');
       if (!draft.lines.length || !liveTextIsCurrent(draft)) throw new Error('Wait for every ingredient to appear and check the highlighted rows before logging.');
       if (new Set(draft.lines.map(l => l.id)).size !== draft.lines.length) throw new Error('This meal contains duplicate rows.');
       const entries: LogEntry[] = draft.lines.map(line => {
         const snapshot: LogEntry['snapshot'] = { kind: 'food', ingredient: lineIngredient(line) };
-        return { id: line.id, batchId: draft.id, recordedAt: at.toISOString(), meal: draft.meal, snapshot, nutrition: snapshotNutrition(snapshot) };
+        return { id: line.id, batchId: draft.id, recordedAt, ...(draft.loggingDate && draft.loggingDate !== dayKey(at) ? { timePrecision: 'day' as const } : {}), meal: draft.meal, snapshot, nutrition: snapshotNutrition(snapshot) };
       });
       const fresh = entries.filter(e => !this.logs.some(l => l.id === e.id));
       if (!fresh.length) {
@@ -234,12 +239,12 @@ export class Repository {
       const foodMap = new Map(this.foods.map(f => [f.id, f]));
       draft.lines.forEach(line => foodMap.set(line.food!.id, line.food!));
       const foods = [...foodMap.values()]; this.checkBarcodes(foods);
-      const nextDraft = emptyDraft(this.id), ids = fresh.map(e => e.id);
+      const nextDraft = emptyDraft(this.id, draft.meal), ids = fresh.map(e => e.id);
       const matches = { ...this.quickEntry.matches };
       // Log is the user's confirmation of the complete review. Last correction
       // wins. A cancelled draft or failed transaction never teaches a match.
       for (const line of draft.lines) if (!line.entrySource && normalize(line.query)) matches[normalize(line.query)] = { foodId: line.food!.id, confirmedAt: at.toISOString() };
-      const preferences = this.voicePreferences(quickEntrySchema.parse({ ...this.quickEntry, matches }), voiceId);
+      const preferences = this.voicePreferences(quickEntrySchema.parse({ ...this.quickEntry, matches, lastMeal: draft.meal }), voiceId);
       await this.commit([...draft.lines.map(l => put('food', l.food!.id, l.food)), ...fresh.map(e => put('log', e.id, e)), put('draft', 'active', nextDraft), put('undo', 'latest', ids), put('deletionUndo', 'latest', []), put('quickEntry', 'preferences', preferences)]);
       this.quickEntry = preferences;
       this.foods = foods; this.logs = [...this.logs, ...fresh]; this.draft = nextDraft; this.undo = ids; this.deletionUndo = []; this.sortAndIndex();
@@ -284,16 +289,16 @@ export class Repository {
     if (!shortcut) throw new Error('This shortcut is no longer available.');
     return structuredCopy(shortcut.entries);
   }
-  logShortcut(id: string, at = new Date(), voiceId?: string) {
+  logShortcut(id: string, at = new Date(), voiceId?: string, meal?: Meal, dateOnly = false) {
     return this.serialized(async () => {
       if (!this.voiceReady(voiceId)) return;
       const batchId = this.id();
-      const logs = this.shortcutEntries(id).map(entry => logSchema.parse({ ...entry, id: this.id(), batchId, recordedAt: at.toISOString(), corrections: undefined, nutrition: snapshotNutrition(entry.snapshot) }));
+      const logs = this.shortcutEntries(id).map(entry => logSchema.parse({ ...entry, id: this.id(), batchId, recordedAt: at.toISOString(), timePrecision: dateOnly ? 'day' : undefined, meal: meal ?? entry.meal, corrections: undefined, nutrition: snapshotNutrition(entry.snapshot) }));
       assertBatchCapacity(this.preparedBatches, [...this.logs, ...logs]);
       const undo = logs.map(entry => entry.id);
-      const preferences = this.voicePreferences(this.quickEntry, voiceId);
-      await this.commit([...(voiceId ? [put('quickEntry', 'preferences', preferences)] : []),...logs.map(entry => put('log', entry.id, entry)), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
-      if (voiceId) this.quickEntry = preferences;
+      const preferences = this.voicePreferences({ ...this.quickEntry, ...(meal ? { lastMeal: meal } : {}) }, voiceId);
+      await this.commit([...(voiceId || meal ? [put('quickEntry', 'preferences', preferences)] : []),...logs.map(entry => put('log', entry.id, entry)), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
+      if (voiceId || meal) this.quickEntry = preferences;
       this.logs = [...this.logs, ...logs]; this.undo = undo; this.deletionUndo = []; this.sortAndIndex();
     });
   }
@@ -388,7 +393,7 @@ export class Repository {
         const original = edit.original.find(entry => entry.id === row.entry.id);
         if (!original && this.logs.some(entry => entry.id === row.entry.id)) throw new Error('A new row has an existing diary identity.');
         if (original && JSON.stringify(original.snapshot) === JSON.stringify(snapshot)) return structuredCopy(original);
-        const baseline = original ?? { id: row.entry.id, batchId: first.batchId, recordedAt: first.recordedAt, meal: first.meal };
+        const baseline = original ?? { id: row.entry.id, batchId: first.batchId, recordedAt: first.recordedAt, timePrecision: first.timePrecision, meal: first.meal };
         let batchRecipe = original?.batchRecipe;
         if (original?.preparedBatchId) {
           if (original.snapshot.kind !== 'recipe' || snapshot!.kind !== 'recipe') throw new Error('Keep a saved portion as a recipe. Add extra foods separately.');
@@ -398,7 +403,7 @@ export class Repository {
         const changed = original && JSON.stringify(original.snapshot) !== JSON.stringify(snapshot);
         if (changed && (original.corrections?.length ?? 0) >= 200) throw new Error('This entry has reached its correction limit.');
         return logSchema.parse({ ...baseline, snapshot, nutrition, batchRecipe,
-          corrections: edit.target === 'logs' && changed ? [...(original.corrections ?? []), { correctedAt: now, previous: { recordedAt: original.recordedAt, meal: original.meal, snapshot: original.snapshot, nutrition: original.nutrition, batchRecipe: original.batchRecipe } }] : original?.corrections });
+          corrections: edit.target === 'logs' && changed ? [...(original.corrections ?? []), { correctedAt: now, previous: { timePrecision: original.timePrecision, recordedAt: original.recordedAt, meal: original.meal, snapshot: original.snapshot, nutrition: original.nutrition, batchRecipe: original.batchRecipe } }] : original?.corrections });
       });
       const preferences = quickEntrySchema.parse({ ...this.quickEntry, mealEdit: undefined });
       if (edit.target === 'shortcut') {
@@ -417,14 +422,14 @@ export class Repository {
       this.logs = logs; this.mealCorrections = [...this.mealCorrections, correction]; this.undo = applied.map(entry => entry.id); this.deletionUndo = []; this.quickEntry = preferences; this.sortAndIndex();
     });
   }
-  startRepeatReview(entryIds: string[]) {
+  startRepeatReview(entryIds: string[], destination?: LoggingDestination) {
     const ids = [...new Set(entryIds)];
     return this.serialized(async () => {
       if (this.quickEntry.mealEdit) throw new Error('Finish or cancel your meal edit first.');
       if (this.quickEntry.repeatReview) throw new Error('Finish or cancel your current repeat first.');
       if (!ids.length || ids.length > 200) throw new Error('Choose a meal with 1–200 entries.');
       const entries = ids.map(id => { const entry = this.logs.find(log => log.id === id); if (!entry) throw new Error('This meal is no longer available.'); return entry; });
-      const repeatReview = makeRepeatReview(entries, this.id());
+      const repeatReview = { ...makeRepeatReview(entries, this.id()), ...destination };
       const preferences = quickEntrySchema.parse({ ...this.quickEntry, repeatReview });
       await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
     });
@@ -439,6 +444,16 @@ export class Repository {
       await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
     });
   }
+  saveRepeatDestination(reviewId: string, destination: LoggingDestination) {
+    return this.serialized(async () => {
+      const current = this.quickEntry.repeatReview;
+      if (!current || current.id !== reviewId) throw new Error('This repeat is no longer open.');
+      const repeatReview = repeatReviewSchema.parse({ ...current, ...destination });
+      loggingTime(repeatReview.loggingDate);
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, repeatReview, ...(destination.meal ? { lastMeal: destination.meal } : {}) });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
+    });
+  }
   cancelRepeatReview(reviewId: string) {
     return this.serialized(async () => {
       if (this.quickEntry.repeatReview?.id !== reviewId) throw new Error('This repeat is no longer open.');
@@ -450,17 +465,18 @@ export class Repository {
     return this.serialized(async () => {
       const review = this.quickEntry.repeatReview;
       if (!review || review.id !== reviewId) throw new Error('This repeat is no longer open.');
+      const recordedAt = loggingTime(review.loggingDate, at).toISOString();
       const progress = reviewRepeatedMeal(review);
       if (!progress.valid) throw new Error('Check the highlighted amounts before logging.');
       const batchId = this.id();
-      const logs = progress.rows.map(row => logSchema.parse({ id: this.id(), batchId, recordedAt: at.toISOString(), meal: row.entry.meal, preparedBatchId: row.entry.preparedBatchId, batchRecipe: row.entry.batchRecipe, snapshot: row.snapshot, nutrition: row.nutrition }));
+      const logs = progress.rows.map(row => logSchema.parse({ id: this.id(), batchId, recordedAt, timePrecision: review.loggingDate && review.loggingDate !== dayKey(at) ? 'day' : undefined, meal: review.meal ?? row.entry.meal, preparedBatchId: row.entry.preparedBatchId, batchRecipe: row.entry.batchRecipe, snapshot: row.snapshot, nutrition: row.nutrition }));
       assertBatchCapacity(this.preparedBatches, [...this.logs, ...logs]);
-      const preferences = quickEntrySchema.parse({ ...this.quickEntry, repeatReview: undefined }), undo = logs.map(log => log.id);
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, repeatReview: undefined, ...(review.meal ? { lastMeal: review.meal } : {}) }), undo = logs.map(log => log.id);
       await this.commit([...logs.map(log => put('log', log.id, log)), put('quickEntry', 'preferences', preferences), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
       this.logs = [...this.logs, ...logs]; this.quickEntry = preferences; this.undo = undo; this.deletionUndo = []; this.sortAndIndex();
     });
   }
-  repeatMeal(entryIds: string[], at = new Date(), voiceId?: string) {
+  repeatMeal(entryIds: string[], at = new Date(), voiceId?: string, meal?: Meal, dateOnly = false) {
     const ids = [...new Set(entryIds)];
     return this.serialized(async () => {
       if (!this.voiceReady(voiceId)) return;
@@ -470,13 +486,13 @@ export class Repository {
         const entry = this.logs.find(log => log.id === id);
         if (!entry) throw new Error('This meal is no longer available.');
         const snapshot = structuredCopy(entry.snapshot);
-        return logSchema.parse({ ...entry, snapshot, nutrition: snapshotNutrition(snapshot), id: this.id(), batchId, recordedAt: at.toISOString(), corrections: undefined });
+        return logSchema.parse({ ...entry, snapshot, nutrition: snapshotNutrition(snapshot), id: this.id(), batchId, recordedAt: at.toISOString(), timePrecision: dateOnly ? 'day' : undefined, meal: meal ?? entry.meal, corrections: undefined });
       });
       assertBatchCapacity(this.preparedBatches, [...this.logs, ...logs]);
       const undo = logs.map(log => log.id);
-      const preferences = this.voicePreferences(this.quickEntry, voiceId);
-      await this.commit([...(voiceId ? [put('quickEntry', 'preferences', preferences)] : []),...logs.map(log => put('log', log.id, log)), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
-      if (voiceId) this.quickEntry = preferences;
+      const preferences = this.voicePreferences({ ...this.quickEntry, ...(meal ? { lastMeal: meal } : {}) }, voiceId);
+      await this.commit([...(voiceId || meal ? [put('quickEntry', 'preferences', preferences)] : []),...logs.map(log => put('log', log.id, log)), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
+      if (voiceId || meal) this.quickEntry = preferences;
       this.logs = [...this.logs, ...logs]; this.undo = undo; this.deletionUndo = []; this.sortAndIndex();
     });
   }
@@ -519,7 +535,7 @@ export class Repository {
       this.logs = this.logs.filter(l => !ids.has(l.id)); this.undo = []; this.deletionUndo = []; this.sortAndIndex();
     });
   }
-  correctLog(id: string, patch: { quantity: string; unit?: Unit | 'servings'; recordedAt?: string; meal?: Meal }) {
+  correctLog(id: string, patch: { quantity: string; unit?: Unit | 'servings'; recordedAt?: string; meal?: Meal; timePrecision?: 'day' | null }) {
     return this.serialized(async () => {
       const entry = this.logs.find(log => log.id === id);
       if (!entry) throw new Error('This entry is no longer available.');
@@ -532,8 +548,8 @@ export class Repository {
         if (patch.unit && patch.unit !== 'g' && patch.unit !== 'servings') throw new Error('Choose grams or servings for a recipe.');
         snapshot.quantity = patch.quantity; snapshot.unit = patch.unit ?? snapshot.unit;
       }
-      const previous = { batchRecipe: entry.batchRecipe, recordedAt: entry.recordedAt, meal: entry.meal, snapshot: entry.snapshot, nutrition: entry.nutrition };
-      const corrected = logSchema.parse({ ...entry, recordedAt: patch.recordedAt ?? entry.recordedAt, meal: patch.meal ?? entry.meal, snapshot, nutrition: snapshotNutrition(snapshot), corrections: [...(entry.corrections ?? []), { correctedAt: new Date().toISOString(), previous }] });
+      const previous = { timePrecision: entry.timePrecision, batchRecipe: entry.batchRecipe, recordedAt: entry.recordedAt, meal: entry.meal, snapshot: entry.snapshot, nutrition: entry.nutrition };
+      const corrected = logSchema.parse({ ...entry, timePrecision: patch.timePrecision === undefined ? entry.timePrecision : patch.timePrecision ?? undefined, recordedAt: patch.recordedAt ?? entry.recordedAt, meal: patch.meal ?? entry.meal, snapshot, nutrition: snapshotNutrition(snapshot), corrections: [...(entry.corrections ?? []), { correctedAt: new Date().toISOString(), previous }] });
       assertBatchCapacity(this.preparedBatches, this.logs.map(log => log.id === id ? corrected : log));
       const invalidateCorrectionUndo = this.isCorrectionUndo && this.undo.includes(id);
       await this.commit([put('log', id, corrected), ...(invalidateCorrectionUndo ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
@@ -581,23 +597,23 @@ export class Repository {
       const foods = [...new Map([...this.foods, ...draft.lines.map(line => line.food!)].map(food => [food.id, food])).values()]; this.checkBarcodes(foods);
       const matches = { ...this.quickEntry.matches };
       for (const line of draft.lines) if (!line.entrySource && normalize(line.query)) matches[normalize(line.query)] = { foodId: line.food!.id, confirmedAt: batch.createdAt };
-      const preferences = quickEntrySchema.parse({ ...this.quickEntry, matches }), nextDraft = emptyDraft(this.id);
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, matches }), nextDraft = emptyDraft(this.id, this.quickEntry.lastMeal);
       await this.commit([put('preparedBatch', batch.id, batch), ...draft.lines.map(line => put('food', line.food!.id, line.food)), put('quickEntry', 'preferences', preferences), put('draft', 'active', nextDraft)]);
       this.preparedBatches = [...this.preparedBatches, batch]; this.foods = foods; this.quickEntry = preferences; this.draft = nextDraft; this.sortAndIndex(); return batch;
     });
   }
   logPreparedBatch(id: string, quantity?: string, unit?: 'servings' | 'g', at?: Date, meal?: Meal): Promise<LogEntry>;
-  logPreparedBatch(id: string, quantity: string, unit: 'servings' | 'g', at: Date, meal: Meal | undefined, voiceId: string): Promise<LogEntry | undefined>;
-  logPreparedBatch(id: string, quantity = '1', unit: 'servings' | 'g' = 'servings', at = new Date(), meal?: Meal, voiceId?: string): Promise<LogEntry | undefined> {
+  logPreparedBatch(id: string, quantity: string, unit: 'servings' | 'g', at: Date, meal: Meal | undefined, voiceId: string, dateOnly?: boolean): Promise<LogEntry | undefined>;
+  logPreparedBatch(id: string, quantity = '1', unit: 'servings' | 'g' = 'servings', at = new Date(), meal?: Meal, voiceId?: string, dateOnly = false): Promise<LogEntry | undefined> {
     return this.serialized(async () => {
       if (!this.voiceReady(voiceId)) return;
       const batch = this.preparedBatches.find(batch => batch.id === id); if (!batch) throw new Error('This saved batch is unavailable.');
       portionFits(batch, this.logs, quantity, unit);
       const snapshot: LogEntry['snapshot'] = { kind: 'recipe', recipe: structuredCopy(batch.recipe), quantity, unit };
-      const log = logSchema.parse({ id: this.id(), batchId: this.id(), preparedBatchId: id, recordedAt: at.toISOString(), meal: meal ?? batch.meal, snapshot, nutrition: snapshotNutrition(snapshot) });
-      const preferences = this.voicePreferences(this.quickEntry, voiceId);
-      await this.commit([...(voiceId ? [put('quickEntry', 'preferences', preferences)] : []),put('log', log.id, log), put('undo', 'latest', [log.id]), put('deletionUndo', 'latest', [])]);
-      if (voiceId) this.quickEntry = preferences;
+      const log = logSchema.parse({ id: this.id(), batchId: this.id(), preparedBatchId: id, recordedAt: at.toISOString(), ...(dateOnly ? { timePrecision: 'day' as const } : {}), meal: meal ?? batch.meal, snapshot, nutrition: snapshotNutrition(snapshot) });
+      const preferences = this.voicePreferences({ ...this.quickEntry, ...(meal ? { lastMeal: meal } : {}) }, voiceId);
+      await this.commit([...(voiceId || meal ? [put('quickEntry', 'preferences', preferences)] : []),put('log', log.id, log), put('undo', 'latest', [log.id]), put('deletionUndo', 'latest', [])]);
+      if (voiceId || meal) this.quickEntry = preferences;
       this.logs = [...this.logs, log]; this.undo = [log.id]; this.deletionUndo = []; this.sortAndIndex(); return log;
     });
   }
@@ -647,11 +663,11 @@ export class Repository {
       const localDates = new Set(this.targets.map(change => change.effectiveOn));
       const targets = merge((backup.targets ?? []).filter(change => !localDates.has(change.effectiveOn)), this.targets);
       assertBatchCapacity(preparedBatches, logs);
-      const draft = this.draft.lines.length || this.draft.text || this.draft.recipeName || this.draft.splitPlan ? this.draft : backup.draft;
+      const draft = this.draft.lines.length || this.draft.text || this.draft.recipeName || this.draft.splitPlan || this.draft.loggingDate ? this.draft : backup.draft;
       const recipeDrafts = { ...backup.recipeDrafts, ...this.recipeDrafts };
       const matches = { ...backup.quickEntry?.matches };
       for (const [query, match] of Object.entries(this.quickEntry.matches)) if (options.recoverMissing || !matches[query] || matches[query].confirmedAt <= match.confirmedAt) matches[query] = match;
-      const preferences = quickEntrySchema.parse({ voiceDraft: this.quickEntry.voiceDraft !== undefined ? this.quickEntry.voiceDraft : backup.quickEntry?.voiceDraft, voiceLocale: this.quickEntry.voiceLocale ?? backup.quickEntry?.voiceLocale, lastVoiceCommand: this.quickEntry.lastVoiceCommand ?? backup.quickEntry?.lastVoiceCommand, weightDraft: this.quickEntry.weightDraft !== undefined ? this.quickEntry.weightDraft : backup.quickEntry?.weightDraft, weightUnit: this.quickEntry.weightUnit ?? backup.quickEntry?.weightUnit, mealEdit: this.quickEntry.mealEdit ?? backup.quickEntry?.mealEdit, libraryHidden: backup.quickEntry?.libraryHidden || this.quickEntry.libraryHidden ? { ...backup.quickEntry?.libraryHidden, ...this.quickEntry.libraryHidden } : undefined, entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, labelDrafts: backup.quickEntry?.labelDrafts || this.quickEntry.labelDrafts ? { ...backup.quickEntry?.labelDrafts, ...this.quickEntry.labelDrafts } : undefined, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
+      const preferences = quickEntrySchema.parse({ lastMeal: this.quickEntry.lastMeal ?? backup.quickEntry?.lastMeal, voiceDraft: this.quickEntry.voiceDraft !== undefined ? this.quickEntry.voiceDraft : backup.quickEntry?.voiceDraft, voiceLocale: this.quickEntry.voiceLocale ?? backup.quickEntry?.voiceLocale, lastVoiceCommand: this.quickEntry.lastVoiceCommand ?? backup.quickEntry?.lastVoiceCommand, weightDraft: this.quickEntry.weightDraft !== undefined ? this.quickEntry.weightDraft : backup.quickEntry?.weightDraft, weightUnit: this.quickEntry.weightUnit ?? backup.quickEntry?.weightUnit, mealEdit: this.quickEntry.mealEdit ?? backup.quickEntry?.mealEdit, libraryHidden: backup.quickEntry?.libraryHidden || this.quickEntry.libraryHidden ? { ...backup.quickEntry?.libraryHidden, ...this.quickEntry.libraryHidden } : undefined, entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, labelDrafts: backup.quickEntry?.labelDrafts || this.quickEntry.labelDrafts ? { ...backup.quickEntry?.labelDrafts, ...this.quickEntry.labelDrafts } : undefined, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
       const clearingDeletion = this.isDeletionUndo || this.isCorrectionUndo;
       await this.commit([...weighIns.map(item => put('weighIn', item.id, item)), ...mealCorrections.map(item => put('mealCorrection', item.id, item)), ...shortcuts.map(item => put('mealShortcut', item.id, item)), ...dayReviews.map(item => put('dayReview', item.id, item)), ...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : []), ...(clearingDeletion ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
       if (clearingDeletion) { this.undo = []; this.deletionUndo = []; }

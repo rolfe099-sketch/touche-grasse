@@ -1,10 +1,18 @@
+import { destinationDescription, extractLoggingDestination, LoggingDestination } from './loggingDestination';
 import { D, dayKey, Draft, IdFactory, LogEntry, Meal, parseAmount } from './model';
 import { commandCourtesy, commandRequest, ingredientText, spokenNumbers } from './naturalInput';
 import { editLiveLine, QuickEntryPreferences, updateLiveText } from './quickEntry';
 import { FoodIndex, normalize } from './search';
 
-export type MealCommand = { kind: 'draft'; draft: Draft; message: string } | { kind: 'log' } | { kind: 'recipe' } | { kind: 'repeat'; yesterdayMeal?: Meal } | { kind: 'shortcut'; name: string } | { kind: 'portion'; name: string; quantity: string };
-export function applyCommand(input: string, draft: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory): MealCommand {
+export type MealCommand = ({ kind: 'draft'; draft: Draft; message: string } | { kind: 'log' } | { kind: 'recipe' } | { kind: 'repeat'; yesterdayMeal?: Meal } | { kind: 'shortcut'; name: string } | { kind: 'portion'; name: string; quantity: string }) & { destination?: LoggingDestination };
+export function applyCommand(input: string, draft: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory, now = new Date()): MealCommand {
+  const parsed = extractLoggingDestination(spokenNumbers(commandRequest(input)), now);
+  const next = parsed.destination ? { ...draft, ...parsed.destination } : draft;
+  if (parsed.destination && /^set (?:date|meal)$/i.test(parsed.text)) return { kind: 'draft', draft: next, message: destinationDescription(next, now) };
+  const result = applyIngredientCommand(parsed.text, next, index, preferences, id);
+  return { ...result, ...(parsed.destination ? { destination: parsed.destination } : {}), ...(result.kind === 'draft' && parsed.destination ? { message: `${result.message} · ${destinationDescription(next, now)}` } : {}) };
+}
+function applyIngredientCommand(input: string, draft: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory): MealCommand {
   const text = spokenNumbers(commandRequest(input)).trim().replace(/[.!?]+$/, '')
     .replace(/^(?:I'm|I am) making\s+/i, 'Start a recipe called ')
     .replace(/^jeg lager\s+/i, 'Start a recipe called ')
@@ -60,7 +68,7 @@ export function applyCommand(input: string, draft: Draft, index: FoodIndex, pref
 // Only explicit command boundaries split an utterance. Ingredient conjunctions,
 // decimal commas and food names remain the ingredient parser's responsibility.
 // Nothing is persisted until every clause has validated successfully.
-export function applyCommandSequence(input: string, original: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory): { draft: Draft; command: MealCommand } {
+export function applyCommandSequence(input: string, original: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory, now = new Date()): { draft: Draft; command: MealCommand } {
   const verb = `(?:${commandCourtesy})?` + '(?:add|include|change|set|remove|split|divide|save|log|repeat|start|create|make|finish|open|final\\s+(?:cooked\\s+)?weight|cooked\\s+weight|legg\\s+til|endre|fjern|del)\\b';
   const numberedServings = '(?:(?:\\d+(?:[.,]\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\\s+(?:servings?|portions?))\\b';
   const boundary = new RegExp('(?:\\s+(?:and\\s+)?then\\s+|\\s+(?:and|og)\\s+|[.;!?]\\s*(?:(?:then|and|og)\\s+)?)(?=(?:' + verb + '|' + commandCourtesy + '|' + numberedServings + '))', 'i');
@@ -68,11 +76,12 @@ export function applyCommandSequence(input: string, original: Draft, index: Food
   if (clauses.length > 30) throw new Error('Use up to 30 commands at a time.');
   let draft = original, result: MealCommand | undefined;
   for (let i = 0; i < clauses.length; i++) {
-    result = applyCommand(clauses[i], draft, index, preferences, id);
+    result = applyCommand(clauses[i], draft, index, preferences, id, now);
     if (result.kind === 'draft') draft = result.draft;
     else {
+      if (result.destination) draft = { ...draft, ...result.destination };
       if (i !== clauses.length - 1) throw new Error('Logging or opening a recipe must be the last command. Nothing changed.');
-      if (draft !== original && !['log', 'recipe'].includes(result.kind)) throw new Error('Apply ingredient changes before repeating or logging another saved meal. Nothing changed.');
+      if ((draft.text !== original.text || draft.lines !== original.lines || draft.splitPlan !== original.splitPlan || draft.recipeName !== original.recipeName) && !['log', 'recipe'].includes(result.kind)) throw new Error('Apply ingredient changes before repeating or logging another saved meal. Nothing changed.');
     }
   }
   if (!result) throw new Error('Say or type a command first.');

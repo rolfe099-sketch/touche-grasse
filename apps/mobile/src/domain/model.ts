@@ -1,5 +1,6 @@
 import { Decimal } from 'decimal.js';
 import { z } from 'zod';
+import { calendarDaySchema } from './calendarDay';
 import { ingredientText } from './naturalInput';
 
 export const D = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_EVEN, toExpNeg: -50, toExpPos: 50 });
@@ -29,12 +30,12 @@ export const lineSchema = z.object({ id: z.string(), query: z.string().max(500),
 export const splitPlanSchema = z.object({ name: z.string().max(300), servingsText: z.string().max(100), cookedWeightText: z.string().max(100) });
 export type SplitPlan = z.infer<typeof splitPlanSchema>;
 export const draftSchema = z.object({ id: z.string(), text: z.string().max(10000), lines: z.array(lineSchema).max(200), meal: z.enum(meals),
-  textRows: z.array(lineSchema.omit({ food: true })).max(200).optional(), splitPlan: splitPlanSchema.optional(), recipeName: z.string().max(300).optional() });
+  loggingDate: calendarDaySchema.optional(), textRows: z.array(lineSchema.omit({ food: true })).max(200).optional(), splitPlan: splitPlanSchema.optional(), recipeName: z.string().max(300).optional() });
 export const snapshotSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('food'), ingredient: ingredientSchema }),
   z.object({ kind: z.literal('recipe'), recipe: recipeSchema, quantity: decimalSchema, unit: z.enum(['servings', 'g']) }),
 ]);
-export const logValueSchema = z.object({ recordedAt: z.iso.datetime(), meal: z.enum(meals), snapshot: snapshotSchema, nutrition: nutritionSchema, batchRecipe: recipeSchema.optional() });
+export const logValueSchema = z.object({ recordedAt: z.iso.datetime(), timePrecision: z.literal('day').optional(), meal: z.enum(meals), snapshot: snapshotSchema, nutrition: nutritionSchema, batchRecipe: recipeSchema.optional() });
 export const logSchema = logValueSchema.extend({ id: z.string(), batchId: z.string(), preparedBatchId: z.string().min(1).optional(), corrections: z.array(z.object({ correctedAt: z.iso.datetime(), previous: logValueSchema })).max(200).optional() });
 export const profileSchema = z.object({ firstUsedAt: z.iso.datetime() });
 export const recipeDraftSchema = z.object({ recipe: recipeSchema.extend({ name: z.string().max(300), ingredients: z.array(ingredientSchema.extend({ quantity: z.string().max(100) })).max(200), servings: z.string().max(100), cookedWeightGrams: z.string().max(100).nullable() }), instructions: z.string().max(500000), splitPlan: splitPlanSchema.optional() });
@@ -121,7 +122,7 @@ export function lineIngredient(line: Line): Ingredient {
   foodNutrition(line.food, quantity, line.unit);
   return { id: line.id, food: line.food, quantity, unit: line.unit };
 }
-export function emptyDraft(id: IdFactory): Draft { return { id: id(), text: '', lines: [], meal: 'Middag' }; }
+export function emptyDraft(id: IdFactory, meal: Meal = 'Middag'): Draft { return { id: id(), text: '', lines: [], meal }; }
 export function parseEntry(text: string, id: IdFactory): Line[] {
   const parts = ingredientText(text).split(/(?<!\d),|,(?!\d)|[;\n]/).map(s => s.trim()).filter(Boolean);
   if (text.length > 10000 || parts.length > 200) throw new Error('Enter up to 200 ingredients and 10,000 characters.');

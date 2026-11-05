@@ -22,4 +22,6 @@ Unit tests cover keyboard overlap, responsive layout choices, summary shapes and
 
 Browser tests restore an isolated archive containing all record families, ordinary and specialized drafts, a consumed finite portion and correction history. They export it, restore it repeatedly and restore that export into another fresh browser context, checking exact records and drafts. Invalid/cancelled replacement selections and invalid nested records must preserve the pre-existing diary. All browser stores are isolated from the owner's app.
 
+On 5 November 2026, the owner confirmed that choosing a previously exported copy through Files on iPhone 13 Pro opens its review with the filename and contents counts. This establishes native file selection and review.
+
 Native photo comparison, keyboard/zoom comfort, Dynamic Type, VoiceOver and a feature-rich Files restore remain physical checks. The previously owner-confirmed crop/reread result remains recorded separately. This pass adds no native module or standalone build.

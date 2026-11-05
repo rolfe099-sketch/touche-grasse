@@ -9,9 +9,10 @@ import { Button, TextButton, styles } from './components';
 import { Text, TextInput } from './Text';
 import { colors } from './theme';
 import { foodLabel } from '../domain/foodLanguage';
-import { mealLabel } from '../i18n';
+import { LoggingDestination } from './LoggingDestination';
+import { calendarKey, loggingDayLabel } from '../domain/calendarDay';
 
-export function RepeatMealReview({ onLogged }: { onLogged?: () => void }) {
+export function RepeatMealReview({ onLogged, requestedDate }: { onLogged?: (date?: string) => void; requestedDate?: string }) {
   const { repo } = useApp(), review = repo.quickEntry.repeatReview;
   const [focused, setFocused] = useState(false);
   useFocusEffect(useCallback(() => {
@@ -19,13 +20,19 @@ export function RepeatMealReview({ onLogged }: { onLogged?: () => void }) {
     void repo.waitForWrites().then(() => { if (active) setFocused(true); });
     return () => { active = false; setFocused(false); };
   }, [repo]));
-  return review && focused ? <RepeatEditor key={review.id} onLogged={onLogged} /> : null;
+  return review && focused ? <RepeatEditor key={review.id} onLogged={onLogged} requestedDate={requestedDate} /> : null;
 }
 
-function RepeatEditor({ onLogged }: { onLogged?: () => void }) {
+function RepeatEditor({ onLogged, requestedDate }: { onLogged?: (date?: string) => void; requestedDate?: string }) {
   const app = useApp(), review = app.repo.quickEntry.repeatReview!;
   const pathname = usePathname();
   const [amounts, setAmounts] = useState(review.amounts), [error, setError] = useState('');
+  const [keepDate, setKeepDate] = useState(false);
+  const dateConflict = !keepDate && requestedDate && requestedDate !== (review.loggingDate ?? calendarKey(new Date()));
+  const pinned = useRef(false);
+  useEffect(() => {
+    if (!review.loggingDate && !pinned.current) { pinned.current = true; void app.run(() => app.repo.saveRepeatDestination(review.id, { loggingDate: calendarKey(new Date()) })); }
+  }, [review, app]);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const progress = reviewRepeatedMeal({ ...review, amounts });
@@ -36,7 +43,8 @@ function RepeatEditor({ onLogged }: { onLogged?: () => void }) {
   }
   return <View testID="repeat-review" style={{ marginTop: 12, paddingVertical: 8, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text accessibilityRole="header" style={{ fontSize: 17, fontWeight: '600' }}>{review.shortcutId ? app.repo.shortcuts.find(item => item.id === review.shortcutId)?.name ?? 'Adjusted shortcut' : 'Repeat with changes'}</Text><TextButton label="Cancel" accessibilityLabel="Cancel adjusted repeat" disabled={app.busy} onPress={() => void app.run(() => app.repo.cancelRepeatReview(review.id))} /></View>
-    <Text style={{ color: colors.secondary, fontSize: 12, marginBottom: 5 }}>{[...new Set(review.entries.map(entry => mealLabel(entry.meal)))].join(', ')} · today</Text>
+    {dateConflict && <View testID="destination-conflict"><Text>Your adjusted meal has its own date. Use {loggingDayLabel(requestedDate)}?</Text><TextButton label={`Use ${loggingDayLabel(requestedDate)}`} disabled={app.busy} onPress={() => void app.run(() => app.repo.saveRepeatDestination(review.id, { loggingDate: requestedDate }))} /><TextButton label="Keep draft date" disabled={app.busy} onPress={() => setKeepDate(true)} /></View>}
+    <LoggingDestination date={review.loggingDate} meal={review.meal ?? review.entries[0].meal} disabled={app.busy || !!dateConflict} onChange={change => void app.run(() => app.repo.saveRepeatDestination(review.id, change))} />
     {progress.rows.map(({ entry, nutrition, error: rowError }, index) => { const batch = entry.preparedBatchId ? app.repo.preparedBatches.find(item => item.id === entry.preparedBatchId) : undefined; return <View key={entry.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, borderTopWidth: index ? 1 : 0, borderColor: colors.line, minHeight: 55 }}>
       <View style={{ flex: 1 }}><Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600' }}>{entry.snapshot.kind === 'food' ? foodLabel(entry.snapshot.ingredient.food) : logName(entry)}</Text><Text style={{ color: rowError ? colors.error : colors.secondary, fontSize: 12 }}>{rowError ?? `${display(nutrition!.kcal, 0)} kcal`}{batch ? ` · ${display(batchBalance(batch, app.repo.logs).servings.toFixed(), 2)} servings left` : ''}</Text></View>
       <TextInput accessibilityLabel={`Repeat amount ${index + 1}`} testID={`repeat-amount-${index}`} value={amounts[index]} onChangeText={value => change(index, value)} editable={!app.busy} keyboardType="decimal-pad" selectTextOnFocus maxLength={100} style={[styles.input, { width: 78, minHeight: 44, fontSize: 16, textAlign: 'right', paddingVertical: 6 }]} />
@@ -47,6 +55,6 @@ function RepeatEditor({ onLogged }: { onLogged?: () => void }) {
     {!!availabilityError && <Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 12, marginBottom: 6 }}>{availabilityError}</Text>}
     {review.shortcutId && <TextButton label="Edit foods" disabled={app.busy || !progress.valid} onPress={() => void app.run(() => app.repo.editRepeatFoods(review.id)).then(ok => { if (ok && pathname !== '/entry') router.push('/entry'); })} />}
     {review.shortcutId && <TextButton label="Update saved amounts" disabled={app.busy || !progress.valid || !app.repo.shortcuts.some(item => item.id === review.shortcutId && !item.deletedAt)} onPress={() => void app.run(() => { const shortcut = app.repo.shortcuts.find(item => item.id === review.shortcutId)!; return app.repo.saveShortcut(shortcut.name, progress.rows.map(row => ({ ...row.entry, snapshot: row.snapshot!, nutrition: row.nutrition! })), shortcut.id); }, 'Saved amounts updated')} />}
-    <Button label="Log adjusted meal today" primary disabled={app.busy || !progress.valid || !!availabilityError} onPress={() => void app.run(async () => { await app.repo.saveRepeatAmounts(review.id, amounts); await app.repo.logRepeatReview(review.id); }, 'Adjusted meal logged').then(ok => { if (ok) onLogged?.(); })} />
+    <Button label={`Log adjusted meal ${loggingDayLabel(review.loggingDate).toLowerCase()}`} primary disabled={app.busy || !!dateConflict || !progress.valid || !!availabilityError} onPress={() => void app.run(async () => { await app.repo.saveRepeatAmounts(review.id, amounts); await app.repo.logRepeatReview(review.id); }, 'Adjusted meal logged').then(ok => { if (ok) onLogged?.(review.loggingDate); })} />
   </View>;
 }

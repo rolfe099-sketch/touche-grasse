@@ -15,7 +15,7 @@ export function Navigation({ state, navigation, insets }: BottomTabBarProps) {
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, minHeight: 70 }}>
         {tabs.map((tab, i) => {
           if (!tab) return <View key="log" style={{ width: 70, alignItems: 'center', marginTop: -17, paddingBottom: 2 }}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Log food" testID="universal-log" onPress={() => { app.clearNotice(); router.push('/entry'); }} style={({ pressed }) => ({ width: 60, height: 60, backgroundColor: pressed ? colors.primaryPressed : colors.primary, borderRadius: 30, alignItems: 'center', justifyContent: 'center', transform: [{ scale: pressed && !reducedMotion ? 0.96 : 1 }] })}><Icon name="plus" size={29} color={colors.onPrimary} /></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Log food" testID="universal-log" onPress={() => { app.clearNotice(); const active = state.routes[state.index]; const date = active.name === 'history' ? (active.params as { date?: string } | undefined)?.date : undefined; router.push({ pathname: '/entry', params: date ? { date } : {} }); }} style={({ pressed }) => ({ width: 60, height: 60, backgroundColor: pressed ? colors.primaryPressed : colors.primary, borderRadius: 30, alignItems: 'center', justifyContent: 'center', transform: [{ scale: pressed && !reducedMotion ? 0.96 : 1 }] })}><Icon name="plus" size={29} color={colors.onPrimary} /></Pressable>
             <Text style={{ fontSize: 12, marginTop: 3, color: colors.action, letterSpacing: .5 }}>Log</Text>
           </View>;
           const route = state.routes.find(route => route.name === tab.name)!;

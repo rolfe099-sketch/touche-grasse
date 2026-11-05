@@ -109,6 +109,7 @@ export default function History() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 17 }}><Text style={styles.label}>{dateLabel(date, { weekday: 'long' })}</Text><Text style={{ fontSize: 12, color: colors.secondary }}>{day ? `${plural(day.meals, 'meal')} · ${plural(day.entries.length, 'entry', 'entries')}` : 'No entries'}</Text></View>
 
         <NutritionView value={day?.nutrition ?? unknown} large empty={!day} />
+        <TextButton label="Log food for this day" disabled={dayKey(date) > dayKey(new Date()) || app.busy} onPress={() => router.push({ pathname: '/entry', params: { date: dayKey(date) } })} />
         <DayCompletion date={dayKey(date)} />
         <MealCorrectionHistory date={dayKey(date)} />
         <TargetSummary change={targetOn(app.repo.targets, dayKey(date))} />

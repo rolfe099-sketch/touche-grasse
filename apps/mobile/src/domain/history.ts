@@ -1,3 +1,4 @@
+import { calendarDate as localDate } from './calendarDay';
 import { DayReview, daySignature } from './dailyWorkflows';
 import { D, dayKey, LogEntry, Nutrition, scaleRatio, total } from './model';
 
@@ -5,13 +6,7 @@ export type DayRecord = { key: string; date: Date; entries: LogEntry[]; nutritio
 export type HistoryIndex = { byDay: Map<string, DayRecord>; days: DayRecord[]; entries: number; meals: number; recipeServings: string; earliest?: Date };
 export type Scope = 'day' | 'week' | 'month' | 'all';
 
-export function localDate(key: string): Date {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
-  if (!match) throw new Error('Use a date in YYYY-MM-DD format.');
-  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12);
-  if (dayKey(date) !== key || date.getFullYear() < 1900 || date.getFullYear() > 2200) throw new Error('Choose a valid date between 1900 and 2200.');
-  return date;
-}
+export { calendarDate as localDate } from './calendarDay';
 export function addDays(date: Date, count: number) { const next = new Date(date); next.setHours(12, 0, 0, 0); next.setDate(next.getDate() + count); return next; }
 export function startOfWeek(date: Date) { return addDays(date, -((date.getDay() + 6) % 7)); }
 export function startOfMonth(date: Date) { return new Date(date.getFullYear(), date.getMonth(), 1, 12); }

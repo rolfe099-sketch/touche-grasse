@@ -11,7 +11,7 @@ import { StorageAdapter, put } from '../src/storage/contract';
 import { editLiveLine, matchIngredient, reviewInput, recentMealBatches, updateLiveText } from '../src/domain/quickEntry';
 import { batchBalance } from '../src/domain/portions';
 import { Repository } from '../src/domain/repository';
-import { D, emptyDraft, Food, nutrients, Recipe, recipeTotal } from '../src/domain/model';
+import { dayKey, D, emptyDraft, Food, nutrients, Recipe, recipeTotal } from '../src/domain/model';
 import catalogJSON from '../src/data/catalog.json';
 import { emptyTargets, targetOn } from '../src/domain/targets';
 import { confirmBarcodeProduct, parseBarcodeProduct } from '../src/domain/barcode';
@@ -33,6 +33,63 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  it('retains a dated draft and meal choice, logs the whole meal on that day and learns at confirmation time', async () => {
+    const storage = await adapter(), repo = await setup(storage), now = new Date(2026, 10, 5, 9, 30);
+    const draft = { ...draftFor(), loggingDate: '2026-11-04', meal: 'Frokost' as const };
+    draft.lines.push({ ...draft.lines[0], id: randomUUID(), quantityText: '20' });
+    await repo.saveDraft(draft);
+    const reopened = await setup(storage); expect(reopened.draft).toEqual(draft);
+    await reopened.logDraft(reopened.draft, now);
+    expect(reopened.logs).toHaveLength(2);
+    expect(reopened.logs.every(log => dayKey(new Date(log.recordedAt)) === '2026-11-04' && log.meal === 'Frokost' && log.timePrecision === 'day')).toBe(true);
+    expect(reopened.logs.map(log => log.nutrition.kcal).sort()).toEqual(['178.4', '89.2']);
+    expect(Object.values(reopened.quickEntry.matches).every(match => match.confirmedAt === now.toISOString())).toBe(true);
+    expect(reopened.draft.meal).toBe('Frokost'); expect(reopened.draft.loggingDate).toBeUndefined();
+    const again = await setup(storage); expect(again.draft.meal).toBe('Frokost'); expect(again.logs).toEqual(expect.arrayContaining(reopened.logs));
+    await again.undoLast(); expect(again.logs).toHaveLength(0);
+    const recovered = await setup(await adapter()); await recovered.restoreJSON(await reopened.exportJSON());
+    expect(recovered.quickEntry.lastMeal).toBe('Frokost'); expect(recovered.logs).toEqual(expect.arrayContaining(reopened.logs));
+  });
+  it('backdated repeats and adjusted repeats retain source snapshots and remain one undoable meal', async () => {
+    const storage = await adapter(), repo = await setup(storage);
+    await repo.logDraft(draftFor()); const source = structuredClone(repo.logs[0]);
+    await repo.repeatMeal([source.id], new Date(2026, 10, 4, 12), undefined, 'Lunsj');
+    expect(repo.logs.find(log => log.id !== source.id)).toMatchObject({ meal: 'Lunsj', snapshot: source.snapshot, nutrition: source.nutrition });
+    expect(repo.logs.find(log => log.id === source.id)).toEqual(source);
+    await repo.undoLast(); expect(repo.logs).toEqual([source]);
+    await repo.startRepeatReview([source.id], { loggingDate: '2026-11-03', meal: 'Frokost' });
+    await repo.saveRepeatAmounts(repo.quickEntry.repeatReview!.id, ['20']);
+    const reopened = await setup(storage); await reopened.logRepeatReview(reopened.quickEntry.repeatReview!.id, new Date(2026, 10, 5));
+    const added = reopened.logs.find(log => log.id !== source.id)!;
+    expect(dayKey(new Date(added.recordedAt))).toBe('2026-11-03'); expect(added.meal).toBe('Frokost'); expect(added.nutrition.kcal).toBe('178.4');
+    await reopened.undoLast(); expect(reopened.logs).toEqual([source]);
+  });
+  it('backdating saved portions keeps finite capacity, exact fractions and correction date precision', async () => {
+    const storage = await adapter(), repo = await setup(storage);
+    const batch = await repo.createBatchFromDraft(draftFor(), 'Six portions', '6', '60');
+    expect(repo.logs).toHaveLength(0);
+    const source = await repo.logPreparedBatch(batch.id);
+    await repo.startRepeatReview([source.id], { loggingDate: '2026-11-04', meal: 'Lunsj' });
+    const id = repo.quickEntry.repeatReview!.id;
+    await repo.saveRepeatAmounts(id, ['6']);
+    await expect(repo.logRepeatReview(id, new Date(2026, 10, 5))).rejects.toThrow(); expect(repo.logs).toHaveLength(1);
+    await repo.saveRepeatAmounts(id, ['1']); await repo.logRepeatReview(id, new Date(2026, 10, 5));
+    const added = repo.logs.find(log => log.id !== source.id)!;
+    expect(added.nutrition).toEqual(source.nutrition); expect(added.timePrecision).toBe('day'); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('4');
+    await repo.correctLog(added.id, { quantity: '1' });
+    expect(repo.logs.find(log => log.id === added.id)!.corrections![0].previous.timePrecision).toBe('day');
+    await repo.undoLast(); expect(repo.logs).toEqual([source]); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('5');
+  });
+  it('rejects a future date and rolls back destination preferences and voice acknowledgement on a failed write', async () => {
+    const storage = await adapter(); let fail = false;
+    const repo = await setup({ ...storage, commit: async (...args) => { if (fail) throw new Error('Fixture failure'); return storage.commit(...args); } });
+    await repo.saveVoiceDraft({ id: 'destination-command', text: 'Add 10g oil for yesterday', locale: 'en-US' });
+    const before = structuredClone(repo.quickEntry), draft = { ...draftFor(), loggingDate: '2026-11-04', meal: 'Frokost' as const };
+    fail = true; await expect(repo.logDraft(draft, new Date(2026, 10, 5), 'destination-command')).rejects.toThrow('Fixture failure');
+    expect(repo.logs).toEqual([]); expect(repo.quickEntry).toEqual(before); expect(repo.undo).toEqual([]);
+    fail = false; await expect(repo.logDraft({ ...draft, loggingDate: '2026-11-06' }, new Date(2026, 10, 5))).rejects.toThrow('earlier date');
+    expect(repo.logs).toEqual([]); expect((await setup(storage)).quickEntry).toEqual(before);
+  });
   it('retains interrupted commands, rescan evidence and corrections through reopening and backup restore', async () => {
     const storage = await adapter(), repo = await setup(storage);
     const voice = { id: randomUUID(), text: 'Add 200g chicken then split into six servings', locale: 'nb-NO' as const };

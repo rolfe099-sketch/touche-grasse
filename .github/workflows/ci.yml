@@ -59,6 +59,7 @@ jobs:
             verification/voice-scan-reliability
             verification/label-scanning
             verification/label-capture
+            verification/log-destinations
             verification/iphone-usability
             apps/mobile/test-results
           retention-days: 7
