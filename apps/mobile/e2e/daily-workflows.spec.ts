@@ -14,7 +14,7 @@ async function create(page: Page) {
   await page.goto('/entry'); await page.getByTestId('quick-text').fill('10g olive oil, 20g olive oil');
   await expect(page.getByTestId('commit-food')).toBeEnabled(); await page.getByRole('button', { name: 'Save meal shortcut', exact: true }).click();
   await page.getByRole('textbox', { name: 'Shortcut name', exact: true }).fill('My breakfast');
-  await page.getByRole('button', { name: 'Save to Today', exact: true }).click(); await expect(page.getByText('Shortcut saved', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Save to Today', exact: true }).click(); await expect(page.getByText('Shortcut saved', { exact: true }).filter({ visible: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click(); await expect(page.getByTestId('today-shortcuts')).toContainText('My breakfast');
 }
 
@@ -39,10 +39,10 @@ test('named shortcut: save without eating, one-tap log above fold, adjust, undo,
   await page.getByRole('tab', { name: 'Today', exact: true }).click(); await page.getByRole('button', { name: 'Manage meal shortcuts', exact: true }).click();
   await expect(page.getByTestId('library-shortcuts')).toBeVisible();
   await page.getByRole('button', { name: 'Rename shortcut My breakfast', exact: true }).click();
-  await page.getByRole('textbox', { name: 'New shortcut name', exact: true }).fill('Morning oats'); await page.getByRole('button', { name: 'Save name', exact: true }).click(); await expect(page.getByText('Shortcut renamed', { exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'New shortcut name', exact: true }).fill('Morning oats'); await page.getByRole('button', { name: 'Save name', exact: true }).click(); await expect(page.getByText('Shortcut renamed', { exact: true }).filter({ visible: true })).toBeVisible();
   await page.getByRole('button', { name: 'Delete shortcut Morning oats', exact: true }).click(); await expect(page.getByTestId('library-shortcuts').getByTestId('meal-shortcut')).toHaveCount(0);
   await page.getByTestId('library-shortcuts').getByRole('button', { name: 'Deleted', exact: true }).click(); await page.getByRole('button', { name: 'Restore shortcut Morning oats', exact: true }).click();
-  await expect(page.getByText('Shortcut restored', { exact: true })).toBeVisible(); await page.reload();
+  await expect(page.getByText('Shortcut restored', { exact: true }).filter({ visible: true })).toBeVisible(); await page.reload();
   await expect(page.getByTestId('library-shortcuts')).toContainText('Morning oats'); expect(errors).toEqual([]);
   writeFileSync(path.join(output, `${test.info().project.name || 'chromium'}-interactions.json`), JSON.stringify({ dimensions: '390x844', unchanged: { actions: ['Log shortcut'], interactions: 1, scrolls: 0 }, adjusted: { actions: ['Adjust shortcut', 'Focus amount', 'Enter quantity', 'Log adjusted meal'], interactions: 4, scrolls: 0 }, savedAmountsChange: 'Optional explicit Update saved amounts; one-off changes do not overwrite the shortcut', timing: 'Browser automation; not a human cooking-time benchmark' }, null, 2));
 });
@@ -62,7 +62,7 @@ test('complete days exclude partial intake from averages, reopen on new food, an
   await page.goto('/settings'); const chooser = page.waitForEvent('filechooser'); await page.getByRole('button', { name: 'Choose a backup file', exact: true }).click();
   await (await chooser).setFiles({ name: 'isolated-reviewed-day.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(saved)) });
   await expect(page.getByText(/2 diary entries · 0 recipes · 1 shortcuts · 1 reviewed days/)).toBeVisible();
-  await page.getByRole('button', { name: 'Confirm restore', exact: true }).click(); await expect(page.getByText('Backup restored', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Confirm restore', exact: true }).click(); await expect(page.getByText('Backup restored', { exact: true }).filter({ visible: true })).toBeVisible();
   await page.goto(`/history?date=${dayKey(new Date())}&scope=week`); await expect(page.getByTestId('nutrition-kcal')).toHaveText('–');
   await page.getByRole('button', { name: 'All recorded days', exact: true }).click(); await expect(page.getByTestId('nutrition-kcal')).toHaveText('268'); await expect(page.getByText(/Partial days are included; these averages may understate intake/)).toBeVisible();
 });
