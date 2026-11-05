@@ -112,3 +112,66 @@ it('does not reconcile genuinely different kJ or printed kcal readings as roundi
     expect(candidate.columns[0].issues.kcal).toContain('Conflicting');
   }
 });
+it('offers explicit unit confirmation for the reported Dr and absent-unit readings without filling nutrition', () => {
+  const scan = parseNutritionLabel(text('Per 100 g\nProtein 5,6 Dr\nKostfiber 3,2'));
+  const column = scan.columns[0];
+  expect(column.nutrition.protein).toBeNull(); expect(column.nutrition.fiber).toBeNull(); expect(column.nutrition.kcal).toBeNull();
+  expect(column.suggestions).toEqual({ protein: '5.6', fiber: '3.2' });
+  const form = applyLabelColumn(emptyLabelForm(), scan, 0);
+  expect(form.values.protein).toBe(''); expect(form.values.fiber).toBe('');
+  const reviewed = reviewedLabelFood({ ...form, values: { ...form.values, protein: column.suggestions!.protein, fiber: column.suggestions!.fiber } });
+  expect(reviewed.nutrition.protein).toBe('5.6'); expect(reviewed.nutrition.fiber).toBe('3.2'); expect(reviewed.nutrition.kcal).toBeNull();
+  expect(reviewed.provenance.labelScan!.originalNutrition.protein).toBeNull(); expect(reviewed.provenance.nutrientSources.protein).toBe('User-confirmed label value');
+});
+it('retains exact normalized confirmation values from a measured serving without requiring rounded manual input', () => {
+  const scan = parseNutritionLabel(text('Per portion 30 g\nProtein 5,6 Dr'));
+  const form = applyLabelColumn(emptyLabelForm(), scan, 0), confirmed = scan.columns[0].suggestions!.protein;
+  expect(confirmed.length).toBeGreaterThan(10);
+  const reviewed = reviewedLabelFood({ ...form, values: { ...form.values, protein: confirmed } });
+  expect(reviewed.nutrition.protein).toBe(confirmed); expect(reviewed.provenance.nutrientSources.protein).toBe('User-confirmed label value');
+});
+it.each(['5.6 ml', '5.6 kg', '<5.6 Dr', '5O Dr', '5.6 6.7 Dr'])('does not suggest grams for incompatible units or unclear numbers: %s', value => {
+  const column = parseNutritionLabel(text('Per 100 g\nProtein ' + value)).columns[0];
+  expect(column.nutrition.protein).toBeNull(); expect(column.suggestions?.protein).toBeUndefined();
+});
+it('blocks conflicting confirmation candidates and can offer a candidate from a clearer second reading', () => {
+  const conflict = parseNutritionLabel({ ...text('Per 100 g\nProtein 5,6 Dr'), alternative: { text: 'Per 100 g\nProtein 6,5 Dr', blocks: [] } }).columns[0];
+  expect(conflict.suggestions?.protein).toBeUndefined(); expect(conflict.issues.protein).toContain('Conflicting');
+  const partial = parseNutritionLabel({ ...text('Per 100 g\nProtein'), alternative: { text: 'Per 100 g\nProtein 5,6 Dr', blocks: [] } }).columns[0];
+  expect(partial.nutrition.protein).toBeNull(); expect(partial.suggestions?.protein).toBe('5.6'); expect(partial.evidence.protein).toContain('5,6 Dr');
+});
+it('recovers a labeled energy reading swallowed into a geometric header row without guessing other nutrients', () => {
+  const lines = ['Per 100 g', 'energi 2043 kJ/488 kcal', 'Fett 23 g', 'Protein 5,6 Dr', 'Kostfiber 3,2'];
+  const blocks = lines.map((text, i) => ({ text, confidence: null, box: { x: 10, y: i < 2 ? i * 5 : i * 100, width: 500, height: 30 } }));
+  const column = parseNutritionLabel({ engine: 'platform', text: lines.join('\n'), blocks }).columns[0];
+  expect(column.nutrition.kcal).toBe('488'); expect(column.evidence.kcal).toBe('energi 2043 kJ/488 kcal');
+  expect(column.nutrition.protein).toBeNull(); expect(column.nutrition.fiber).toBeNull();
+  expect(column.suggestions).toEqual({ protein: '5.6', fiber: '3.2' });
+});
+it('does not use text recovery to override energy conflicts, changed reference amounts or weak browser readings', () => {
+  const block = (text: string, i: number, confidence: number | null = null) => ({ text, confidence, box: { x: 0, y: i * 100, width: 500, height: 30 } });
+  const conflicting = parseNutritionLabel({ engine: 'platform', text: 'Per 100 g\nEnergi 488 kcal', blocks: ['Per 100 g', 'Energi 488 kcal', 'Energi 489 kcal'].map((s, i) => block(s, i)) }).columns[0];
+  expect(conflicting.nutrition.kcal).toBeNull(); expect(conflicting.issues.kcal).toContain('Conflicting');
+  const changed = parseNutritionLabel({ engine: 'platform', text: 'Per 100 ml\nEnergi 488 kcal', blocks: [block('Per 100 g irrelevant energi 488 kcal', 0)] }).columns[0];
+  expect(changed.nutrition.kcal).toBeNull();
+  const weak = parseNutritionLabel({ engine: 'tesseract', text: 'Per 100 g\nEnergi 488 kcal', blocks: [block('Per 100 g', 0, 95), block('Energi 488 kcal', 1, 50)] }).columns[0];
+  expect(weak.nutrition.kcal).toBeNull();
+  const weakNative = parseNutritionLabel({ engine: 'platform', text: 'Per 100 g\nEnergi 488 kcal', blocks: [block('Per 100 g irrelevant energi 488 kcal', 0, 50)] }).columns[0];
+  expect(weakNative.nutrition.kcal).toBeNull();
+});
+it('repairs the current unfinished v2 readout on reload without another photo or overwriting corrections', () => {
+  const scan = parseNutritionLabel(text('Per 100 g\nenergi 2043 kJ/488 kcal\nProtein 5,6 Dr\nKostfiber 3,2'));
+  scan.parserVersion = 2; scan.columns[0].nutrition.kcal = null; delete scan.columns[0].evidence.kcal; delete scan.columns[0].suggestions!.protein;
+  const before = { ...emptyLabelForm(), scan, column: 0 }, upgraded = upgradeLabelForm(before);
+  expect(upgraded.values.kcal).toBe('488'); expect(upgraded.values.protein).toBe(''); expect(upgraded.values.fiber).toBe('');
+  expect(upgraded.scan!.columns[0].suggestions!.protein).toBe('5.6'); expect(upgraded.scan!.columns[0].suggestions!.fiber).toBe('3.2');
+  expect(upgraded.scan!.text).toBe(scan.text); expect(upgraded.scan!.scannedAt).toBe(scan.scannedAt);
+  expect(upgradeLabelForm({ ...before, values: { ...before.values, kcal: '487', protein: '5.7' } }).values).toMatchObject({ kcal: '487', protein: '5.7' });
+  expect(upgradeLabelForm(upgraded)).toBe(upgraded);
+});
+it('does not replace rejected energy or fill other macros while upgrading a v2 review', () => {
+  const scan = parseNutritionLabel(text('Per 100 g\nEnergy 488 kcal\nProtein 5.6 g')); scan.parserVersion = 2;
+  scan.columns[0].nutrition.kcal = null; scan.columns[0].issues.kcal = 'Conflicting readings'; scan.columns[0].nutrition.protein = null;
+  const next = upgradeLabelForm({ ...emptyLabelForm(), scan, column: 0 });
+  expect(next.values.kcal).toBe(''); expect(next.values.protein).toBe(''); expect(next.scan!.columns[0].issues.kcal).toBe('Conflicting readings');
+});

@@ -2,7 +2,7 @@ import { expect, Page, test } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { emptyDraft } from '../src/domain/model';
-import { parseNutritionLabel } from '../src/domain/nutritionLabel';
+import { applyLabelColumn, LabelForm, parseNutritionLabel } from '../src/domain/nutritionLabel';
 const output = path.resolve('../../verification/label-scanning');
 // Real rendered label images and real local OCR. No recognition response mocks.
 async function labelImage(page: Page, columns = false, unknownBasis = false) {
@@ -75,7 +75,10 @@ test('real Norwegian image OCR → editable review → exact food math → offli
   await expect(page.getByRole('textbox', { name: 'Energy · kcal', exact: true })).toHaveValue('400');
   await page.getByRole('button', { name: 'Discard label draft', exact: true }).click();
   await expect(page).toHaveURL(/\/entry$/);
-  await context.setOffline(false); const after = await exportJSON(page); expect(after.logs).toEqual(saved.logs);  // expo-camera's existing web adapter loads its QR code reader from this CDN  // on import. OCR itself uses local worker/models and sends no image payload.  expect(external.every(request => request.url === 'https://cdn.jsdelivr.net/npm/jsqr@1.2.0/dist/jsQR.min.js' && request.method === 'GET' && request.body === null)).toBe(true);
+  await context.setOffline(false); const after = await exportJSON(page); expect(after.logs).toEqual(saved.logs);
+  // expo-camera's existing web adapter loads its QR code reader from this CDN
+  // on import. OCR itself uses local worker/models and sends no image payload.
+  expect(external.every(request => request.url === 'https://cdn.jsdelivr.net/npm/jsqr@1.2.0/dist/jsQR.min.js' && request.method === 'GET' && request.body === null)).toBe(true);
   writeFileSync(path.join(output, `${test.info().project.name || 'chromium'}-real-ocr.json`), JSON.stringify({ engine: 'actual local Tesseract.js', uploadedImage: image, sourceNutrition: food.provenance.labelScan.originalNutrition, correctedNutrition: food.nutrition, externalRequests: external }, null, 2));
 });
 
@@ -84,8 +87,14 @@ test('two-column image requires an explicit basis and keeps measured serving nut
   await expect(page.getByRole('textbox', { name: 'Energy · kcal', exact: true })).toHaveValue('');
   await page.getByRole('textbox', { name: 'Food name', exact: true }).fill('Two-column label'); await expect(page.getByRole('button', { name: 'Confirm and add', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Use label column 2: Per 30 g', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Energy · kcal', exact: true })).toHaveValue('400');  await reviewFat(page);
-  // The actual engine misreads 7,5 g / 1,5 g in this column. Keep the weak  // readings unknown, then verify real user corrections use normalized values.  await expect(page.getByRole('textbox', { name: 'Protein · g', exact: true })).toHaveValue('');  await expect(page.getByRole('textbox', { name: 'Fiber · g', exact: true })).toHaveValue('');  await page.getByRole('textbox', { name: 'Protein · g', exact: true }).fill('25');  await page.getByRole('textbox', { name: 'Fiber · g', exact: true }).fill('5');
+  await expect(page.getByRole('textbox', { name: 'Energy · kcal', exact: true })).toHaveValue('400');
+  await reviewFat(page);
+  // The actual engine misreads 7,5 g / 1,5 g in this column. Keep the weak
+  // readings unknown, then verify real user corrections use normalized values.
+  await expect(page.getByRole('textbox', { name: 'Protein · g', exact: true })).toHaveValue('');
+  await expect(page.getByRole('textbox', { name: 'Fiber · g', exact: true })).toHaveValue('');
+  await page.getByRole('textbox', { name: 'Protein · g', exact: true }).fill('25');
+  await page.getByRole('textbox', { name: 'Fiber · g', exact: true }).fill('5');
   await page.getByRole('textbox', { name: 'Amount to add · g', exact: true }).fill('30'); await page.getByRole('button', { name: 'Confirm and add', exact: true }).click(); await expect(page.getByTestId('meal-kcal')).toContainText('120');
 });
 
@@ -133,4 +142,32 @@ test('retained native observations recover readable values, require missing-unit
   await page.getByRole('button', { name: 'Confirm and add', exact: true }).click();
   await expect(page.getByTestId('meal-kcal')).toContainText('488');
   const saved = await exportJSON(page); expect(saved.logs).toEqual([]); expect(saved.foods[0].nutrition).toEqual({ kcal: '488', protein: null, carbohydrate: '63', fat: '23', fiber: null });
+});
+
+
+test('reported unfinished native readout repairs energy and requires two explicit unit confirmations before logging', async ({ page }) => {
+  // Replay captured text shapes, not a mocked claim about native photo OCR.
+  const lines = ['Per 100 g', 'energi 2043 kJ/488 kcal', 'Fett 23 g', 'Karbohydrater 63 g', 'Protein 5,6 Dr', 'Kostfiber 3,2'];
+  const blocks = lines.map((text, i) => ({ text, confidence: null, box: { x: 10, y: i < 2 ? i * 5 : i * 100, width: 500, height: 30 } }));
+  const scan = parseNutritionLabel({ engine: 'platform', text: lines.join('\n'), blocks });
+  scan.parserVersion = 2; scan.columns[0].nutrition.kcal = null; delete scan.columns[0].evidence.kcal; delete scan.columns[0].suggestions!.protein;
+  const form: LabelForm = applyLabelColumn({ id: 'unit-review', name: 'Unit review fixture', barcode: '', basis: 'g', amount: '100', values: { kcal: '', protein: '', carbohydrate: '', fat: '', fiber: '' } }, scan, 0);
+  const value = { format: 'touche-grasse', version: 2, foods: [], recipes: [], logs: [], draft: emptyDraft(() => 'unit-review-meal'), quickEntry: { matches: {}, favorites: [], labelDrafts: { 'new:': form } } };
+  await page.goto('/settings'); const chooser = page.waitForEvent('filechooser'); await page.getByRole('button', { name: 'Choose a backup file', exact: true }).click();
+  await (await chooser).setFiles({ name: 'synthetic-unit-review.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(value)) });
+  await page.getByRole('button', { name: 'Confirm restore', exact: true }).click(); await expect(page.getByText('Backup restored', { exact: true })).toBeVisible();
+  await page.goto('/manual');
+  await expect(page.getByRole('textbox', { name: 'Energy \u00b7 kcal', exact: true })).toHaveValue('488');
+  for (const label of ['Protein \u00b7 g', 'Fiber \u00b7 g']) { const field = page.getByRole('textbox', { name: label, exact: true }); await expect(field).toHaveValue(''); await expect(field).toHaveAttribute('placeholder', 'Confirm unit'); }
+  await page.screenshot({ path: path.join(output, `${test.info().project.name || 'chromium'}-unit-confirmation.png`), fullPage: true });
+  await page.getByRole('button', { name: 'Confirm label protein in grams', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Protein \u00b7 g', exact: true })).toHaveValue('5.6');
+  await expect(page.getByRole('textbox', { name: 'Fiber \u00b7 g', exact: true })).toHaveValue('');
+  await page.getByRole('button', { name: 'Confirm label fiber in grams', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Fiber \u00b7 g', exact: true })).toHaveValue('3.2');
+  await page.getByRole('button', { name: 'Confirm and add', exact: true }).click(); await page.getByTestId('commit-food').click();
+  await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('488'); await expect(page.getByTestId('today-fiber')).toHaveText('3.2 g');
+  await page.getByRole('button', { name: 'Undo last log', exact: true }).click();
+  const saved = await exportJSON(page); expect(saved.logs).toEqual([]); expect(saved.foods[0].nutrition.protein).toBe('5.6'); expect(saved.foods[0].nutrition.fiber).toBe('3.2');
+  expect(saved.foods[0].provenance.labelScan.originalNutrition.protein).toBeNull(); expect(saved.foods[0].provenance.labelScan.originalNutrition.fiber).toBeNull();
 });
