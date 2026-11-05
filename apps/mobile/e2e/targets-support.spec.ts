@@ -38,6 +38,7 @@ test('optional targets show exact remaining and over amounts, preserve history a
   await page.clock.setFixedTime(new Date('2026-11-04T12:00:00Z'));
   await page.goto('/'); await setTargets(page, { kcal: '2300' });
   await page.getByRole('button', { name: 'Save targets', exact: true }).click();
+  await expect(page.getByTestId('energy-target-progress')).toContainText('2,300');
   await page.goto('/history?date=2026-11-03&scope=day');
   await expect(page.getByTestId('target-summary')).toContainText('2,000 kcal');
   await expect(page.getByTestId('target-summary')).not.toContainText('2,300');

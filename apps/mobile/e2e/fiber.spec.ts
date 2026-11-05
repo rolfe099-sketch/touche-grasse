@@ -60,7 +60,9 @@ test('manual fiber scales per 100ml and zero remains different from an unknown v
 test('a legacy backup retains unknown fiber and exact historical snapshots after restore and repeat', async ({ page }) => {
   await page.goto('/entry'); await page.getByTestId('quick-text').fill('150g pasta');
   await page.getByTestId('choice-0-mvt:05.016').click(); await page.getByTestId('commit-food').click();
+  await expect(page.getByTestId('today-fiber')).toHaveText('6 g');
   const legacy = await archive(page);
+  expect(legacy.logs).toHaveLength(1);
   for (const food of legacy.foods) { delete food.nutrition.fiber; delete food.provenance.nutrientSources.fiber; }
   for (const log of legacy.logs) { delete log.nutrition.fiber; delete log.snapshot.ingredient.food.nutrition.fiber; delete log.snapshot.ingredient.food.provenance.nutrientSources.fiber; }
   // A fresh browser context models an existing installation restoring a pre-fiber archive.
