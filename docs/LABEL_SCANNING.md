@@ -12,6 +12,8 @@ Separate heading/value observations are paired only across adjacent numeric/unit
 
 The photo can be enlarged inline. Every value remains editable and requires user confirmation against the package. OCR is a reading aid, not an independently verified food record. Reviewed foods retain original normalized scan nutrition, basis, recognition/review time and per-field correction attribution. Existing Open Food Facts lineage/license metadata is retained when correcting those records. Historical food, recipe and eaten-portion snapshots remain unchanged.
 
+When a closer reading retains only kJ, the printed kcal from the other reading takes priority only if both retain identical stated kJ values. This avoids treating the exact conversion of rounded kJ as a conflicting measurement. Different stated kJ or different printed kcal remain blocked. Mixed positioned cells and paragraph observations keep their reading order. Rejected fields show their captured source text inline; conflicting passes retain both pieces of evidence for review.
+
 ## Privacy, persistence and offline use
 
 Photos are processed locally: `expo-ocr-kit` 0.1.4 uses the platform engine; the browser uses Tesseract.js 7.0.0 with self-hosted English/Norwegian models. The app sends no image to an OCR service. Source photos are not included in diary exports or recovery copies. Native normalized temporary images are released when the scan is replaced or its view closes; the system photo picker may manage its own cache. Re-encoding strips EXIF and normalizes orientation before recognition.

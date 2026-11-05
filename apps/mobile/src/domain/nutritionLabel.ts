@@ -20,15 +20,25 @@ const nutrient = (text: string) => labels.find(([, re]) => re.test(fold(text).tr
 export const isNutrientHeading = (text: string) => !!nutrient(text);
 function rows(document: LabelDocument) {
   if (!document.blocks.length) return document.text.split(/\r?\n/).map(text => ({ text, confidence: null as number | null }));
-  const grouped: { parts: LabelDocument['blocks']; y: number; height: number }[] = [], flat: { text: string; confidence: number | null }[] = [];
+  const grouped: { parts: LabelDocument['blocks']; y: number; height: number }[] = [], output: { text: string; confidence: number | null }[] = [];
+  const flush = () => {
+    output.push(...grouped.sort((a, b) => a.y - b.y).map(row => ({ text: row.parts.sort((a, b) => a.box!.x - b.box!.x).map(p => p.text).join(' '), confidence: row.parts.some(p => p.confidence !== null) ? Math.min(...row.parts.map(p => p.confidence ?? 100)) : null })));
+    grouped.length = 0;
+  };
   for (const rawBlock of document.blocks) {
     const block = { ...rawBlock, text: rawBlock.text.trim() }; if (!block.text) continue;
-    if (!block.box || block.text.includes('\n') || block.box.height === 0) { flat.push(...block.text.split(/\r?\n/).map(text => ({ text, confidence: block.confidence }))); continue; }
+    // Unpositioned/paragraph observations are ordering barriers. Appending them
+    // after the whole table separates headings from their original values.
+    if (!block.box || block.text.includes('\n') || block.box.height === 0) { flush(); output.push(...block.text.split(/\r?\n/).map(text => ({ text, confidence: block.confidence }))); continue; }
     const center = block.box.y + block.box.height / 2;
     const row = grouped.find(row => Math.abs(row.y - center) < Math.min(row.height, block.box!.height) * .45);
     if (row) row.parts.push(block); else grouped.push({ parts: [block], y: center, height: block.box.height });
   }
-  return [...grouped.sort((a, b) => a.y - b.y).map(row => ({ text: row.parts.sort((a, b) => a.box!.x - b.box!.x).map(p => p.text).join(' '), confidence: row.parts.some(p => p.confidence !== null) ? Math.min(...row.parts.map(p => p.confidence ?? 100)) : null })), ...flat].map(row => ({ ...row, text: row.text.trim() })).filter(row => row.text);
+  flush();
+  return output.map(row => ({ ...row, text: row.text.trim() })).filter(row => row.text);
+}
+function printedEnergy(text: string, unit: 'kj' | 'kcal') {
+  return [...fold(text).matchAll(/(?<![\w.,])(\d+(?:[.,]\d+)?)\s*(kcal|kj)\b/g)].filter(match => match[2] === unit).map(match => parseAmount(match[1]));
 }
 export function parseNutritionLabel(input: LabelDocument, scannedAt = new Date().toISOString()): LabelCandidate {
   const document = labelDocumentSchema.parse(input), lines = rows(document), columns: LabelCandidate['columns'] = [];
@@ -109,9 +119,22 @@ export function parseNutritionLabel(input: LabelDocument, scannedAt = new Date()
   }
   result.columns.forEach((column, index) => nutrients.forEach(key => {
     const other = alternate.columns[index], a = column.nutrition[key], b = other.nutrition[key];
+    const evidence = [column.evidence[key], other.evidence[key]].filter(Boolean).join(' | ').slice(0, 1000);
     const blocker = [column.issues[key], other.issues[key]].find(issue => issue && /bounded|ambiguous|conflicting/i.test(issue));
-    if (blocker) { column.nutrition[key] = null; column.issues[key] = blocker; if (column.suggestions) delete column.suggestions[key]; return; }
-    if (a != null && b != null && !new D(a).eq(b)) { column.nutrition[key] = null; column.issues[key] = 'Conflicting readings · enter the label value'; }
+    if (blocker) { column.nutrition[key] = null; column.issues[key] = blocker; column.evidence[key] = evidence; if (column.suggestions) delete column.suggestions[key]; return; }
+    if (a != null && b != null && !new D(a).eq(b)) {
+      const left = column.evidence[key] ?? '', right = other.evidence[key] ?? '';
+      const leftKJ = printedEnergy(left, 'kj'), rightKJ = printedEnergy(right, 'kj');
+      const leftKcal = printedEnergy(left, 'kcal').length > 0, rightKcal = printedEnergy(right, 'kcal').length > 0;
+      // Identical stated kJ plus an explicit kcal value are not two different
+      // measurements. Preserve printed kcal, never compare it with an exact
+      // conversion of the same rounded kJ. No tolerance or macro estimate.
+      if (key === 'kcal' && leftKcal !== rightKcal && leftKJ.length && JSON.stringify(leftKJ) === JSON.stringify(rightKJ)) {
+        if (rightKcal) { column.nutrition[key] = b; column.evidence[key] = right; }
+        return;
+      }
+      column.nutrition[key] = null; column.issues[key] = 'Conflicting readings · enter the label value'; column.evidence[key] = evidence;
+    }
     else if (a == null && b != null) { column.nutrition[key] = b; column.evidence[key] = other.evidence[key]; delete column.issues[key]; if (column.suggestions) delete column.suggestions[key]; }
   }));
   return labelCandidateSchema.parse(result);

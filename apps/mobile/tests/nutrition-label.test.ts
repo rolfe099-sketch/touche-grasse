@@ -93,3 +93,22 @@ it('includes all table columns in a bounded closer crop and skips an already ful
   expect(crop).not.toBeNull(); expect(crop!.originX).toBeLessThan(300); expect(crop!.originX + crop!.width).toBeGreaterThan(1280); expect(crop!.originY + crop!.height).toBeLessThanOrEqual(3000);
   expect(labelTableCrop({ engine: 'platform', text: '', blocks }, { width: 0, height: 0 })).toBeNull();
 });
+it('keeps mixed paragraph and positioned observations in reading order for a fresh scan', () => {
+  const lines = ['Per 100 g', 'Energi', '2043 kJ/488 kcal', 'Fett', '23\ng', 'Karbohydrat 63 g', 'Protein 8 g', 'Kostfiber 0 g'];
+  const blocks = lines.map((text, i) => ({ text, confidence: null, box: i === 2 ? null : { x: 10, y: i * 100, width: 500, height: text.includes('\n') ? 70 : 30 } }));
+  const candidate = parseNutritionLabel({ engine: 'platform', text: lines.join('\n'), blocks });
+  expect(candidate.columns[0].nutrition).toEqual({ kcal: '488', fat: '23', carbohydrate: '63', protein: '8', fiber: '0' });
+});
+it.each([false, true])('prefers printed kcal when another pass only retains the identical printed kJ (reversed: %s)', reversed => {
+  const complete = 'Per 100 g\nEnergi 2043 kJ/488 kcal\nFett 23 g', partial = 'Per 100 g\nEnergi 2043 kJ\nFett 23 g';
+  const candidate = parseNutritionLabel({ ...text(reversed ? partial : complete), alternative: { text: reversed ? complete : partial, blocks: [] } });
+  expect(candidate.columns[0].nutrition.kcal).toBe('488');
+  expect(candidate.columns[0].nutrition.fat).toBe('23');
+});
+it('does not reconcile genuinely different kJ or printed kcal readings as rounding', () => {
+  for (const alternative of ['Energi 2044 kJ', 'Energi 2043 kJ/489 kcal']) {
+    const candidate = parseNutritionLabel({ ...text('Per 100 g\nEnergi 2043 kJ/488 kcal'), alternative: { text: 'Per 100 g\n' + alternative, blocks: [] } });
+    expect(candidate.columns[0].nutrition.kcal).toBeNull();
+    expect(candidate.columns[0].issues.kcal).toContain('Conflicting');
+  }
+});

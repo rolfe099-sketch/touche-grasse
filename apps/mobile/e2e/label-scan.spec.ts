@@ -34,7 +34,9 @@ test('real Norwegian image OCR → editable review → exact food math → offli
   const image = await labelImage(page), external: { url: string; method: string; body: string | null }[] = []; page.on('request', request => { if (/^https?:/.test(request.url()) && !request.url().startsWith('http://127.0.0.1:4173')) external.push({ url: request.url(), method: request.method(), body: request.postData() }); });
   await page.goto('/entry'); await page.getByTestId('quick-text').fill('10g olive oil'); await page.getByTestId('commit-food').click(); await expect(page).toHaveURL(/\/$/);
   await page.goto('/manual?barcode=7038010001918');
-  await page.evaluate(async () => { await navigator.serviceWorker.ready; if (!navigator.serviceWorker.controller) await new Promise<void>(resolve => navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true })); });
+  // Poll the current state: activation can occur between a controller check
+  // and attaching an event listener, leaving an event-only wait stuck forever.
+  await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller?.scriptURL ?? ''), { timeout: 15000 }).toContain('/sw.js');
   await choosePhoto(page, image);
   await expect(page.getByRole('textbox', { name: 'Energy · kcal', exact: true })).toHaveValue('400');
   await expect(page.getByRole('textbox', { name: 'Protein · g', exact: true })).toHaveValue('25');
@@ -108,6 +110,7 @@ test('retained native observations recover readable values, require missing-unit
   await expect(page.getByRole('textbox', { name: 'Carbs · g', exact: true })).toHaveValue('');
   await expect(page.getByRole('textbox', { name: 'Protein · g', exact: true })).toHaveValue('');
   await expect(page.getByRole('textbox', { name: 'Fiber · g', exact: true })).toHaveValue('');
+  await expect(page.getByText('Read: Karbohydrater 63', { exact: true })).toBeVisible();
   await page.screenshot({ path: path.join(output, `${test.info().project.name || 'chromium'}-separated-observations.png`), fullPage: true });
   await page.getByRole('button', { name: 'Confirm label carbohydrate in grams', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Carbs · g', exact: true })).toHaveValue('63');
