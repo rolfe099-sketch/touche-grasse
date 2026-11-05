@@ -44,8 +44,10 @@ Counting one tap or completed text entry as one interaction, with autofocus and 
 
 These are automated workflow counts, not human completion-time measurements. Ambiguous products still require a choice. Selecting another date requires opening the calendar and selecting a day, or entering and applying a date. Safeguarding a conflicting unfinished draft costs one explicit decision.
 
-## Remaining device check
+## Physical-device result
 
-On the existing iPhone development app, reload, open Log, add `10g olive oil`, choose Yesterday and Breakfast, then log once. Verify yesterday’s History shows 89 kcal and 9.9 g fat, Today is unchanged and Undo removes the entire new meal. Open another new meal and check that Today and Breakfast are selected. This physical-device check is pending; no standalone build is required.
+On 5 November 2026 the owner confirmed on the existing iPhone 13 Pro development app that saying `Add 10 grams of olive oil to yesterday’s breakfast` created the correct destination, logging showed 89 kcal and 9.9 g fat in yesterday’s History, Today stayed unchanged and Undo worked. This is a real microphone and diary check, separate from browser speech injection. No standalone build was required.
+
+Remembered meal defaults, custom calendar dates and unfinished-draft conflicts are covered by browser/storage tests; those specific cases have not yet been separately confirmed on the phone.
 
 Full native backup restoration, VoiceOver and large Dynamic Type remain separate pending checks in [iPhone testing](IPHONE_TESTING.md).
