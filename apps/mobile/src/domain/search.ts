@@ -71,7 +71,7 @@ export class FoodIndex {
     }
     const relevant = ids.filter(id => (!savedOnly || this.saved.has(id)) && (!query || cookingRecordAllowed(query, this.records.get(id)!.food)));
     const tier = (id: string) => {
-      const exact = this.records.get(id)!.names.includes(query) && query !== '';
+      const exact = this.records.get(id)!.names.includes(query) && query !== '' && query !== 'oatmeal';
       return (this.confirmed[query]?.foodId === id ? 10000 : 0) + (exact ? 5000 : 0) + (this.favorites.has(id) ? 3000 : 0) + (this.usage.has(id) ? 2000 : 0) + (this.saved.has(id) ? 1000 : 0) + ingredientRelevance(query, this.records.get(id)!.names);
     };
     relevant.sort((a, b) => tier(b) - tier(a) || (this.usage.get(b)?.count ?? 0) - (this.usage.get(a)?.count ?? 0) || (this.usage.get(b)?.latest ?? 0) - (this.usage.get(a)?.latest ?? 0) || this.records.get(a)!.food.name.length - this.records.get(b)!.food.name.length || this.records.get(a)!.food.name.localeCompare(this.records.get(b)!.food.name, 'nb'));

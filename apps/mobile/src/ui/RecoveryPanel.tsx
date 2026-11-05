@@ -29,7 +29,7 @@ export function RecoveryPanel() {
     </View>)}
     {pending && <View testID="recovery-confirm" style={{ paddingVertical: 10, gap: 8 }}>
       <Text style={{ fontSize: 15, fontWeight: '600' }}>Recover missing records?</Text>
-      <Text style={{ fontSize: 13, color: colors.secondary }}>{summary?.logs} diary {summary?.logs === 1 ? 'entry' : 'entries'} · {summary?.recipes} recipes in this copy. Existing foods, recipes, historical entries and your current unfinished meal are kept. Missing records are merged from this copy.</Text>
+      <Text style={{ fontSize: 13, color: colors.secondary }}>{summary?.logs} diary {summary?.logs === 1 ? 'entry' : 'entries'} · {summary?.recipes} recipes · {summary?.shortcuts} shortcuts · {summary?.reviewedDays} reviewed days in this copy. Existing foods, recipes, historical entries and your current unfinished meal are kept. Missing records are merged from this copy.</Text>
       <Button label="Recover missing records" primary disabled={app.busy} onPress={() => void app.run(() => app.restoreBackup(pending.json, true), 'Recovery merged', true).then(ok => { if (ok) setPending(undefined); })} /><TextButton label="Cancel recovery" disabled={app.busy} onPress={() => setPending(undefined)} />
     </View>}
   </View>;

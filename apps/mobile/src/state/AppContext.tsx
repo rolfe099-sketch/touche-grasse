@@ -14,7 +14,7 @@ import { LabelForm } from '../domain/nutritionLabel';
 
 type State = { repo: Repository; revision: number; draft: Draft; setDraft: (draft: Draft) => void;
   run: (action: () => Promise<unknown>, success?: string, syncDraft?: boolean) => Promise<boolean>;
-  busy: boolean; error: string | null; notice: string | null; clearError: () => void; clearNotice: () => void;
+  busy: boolean; error: string | null; notice: string | null; noticeUndo: boolean; clearError: () => void; clearNotice: () => void;
   recovery?: RecoveryService; recoveryRevision: number; recoveryError: string | null;
   saveRecovery: (reason?: RecoveryMeta['reason']) => Promise<RecoveryMeta | null>;
   saveRepeatAmounts: (reviewId: string, amounts: string[]) => Promise<void>;
@@ -34,6 +34,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeUndo, setNoticeUndo] = useState(false);
   const [busy, setBusy] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryService>(), [recoveryRevision, setRecoveryRevision] = useState(0), [recoveryError, setRecoveryError] = useState<string | null>(null);
   const locked = useRef(false);
@@ -67,11 +68,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const run: State['run'] = async (action, success, syncDraft = false) => {
     if (locked.current) return false;
     locked.current = true; setBusy(true); setError(null);
+    const previousUndo = JSON.stringify([repo.undo, repo.isDeletionUndo]);
     try {
       await action();
       if (syncDraft) updateDraft(repo.draft);
       setRevision(v => v + 1);
-      if (success) { setNotice(success); if (Platform.OS === 'ios') void Haptics.selectionAsync().catch(() => undefined); }
+      const undoChanged = previousUndo !== JSON.stringify([repo.undo, repo.isDeletionUndo]);
+      if (success) { setNotice(success); setNoticeUndo(undoChanged && !!repo.undo.length); if (Platform.OS === 'ios') void Haptics.selectionAsync().catch(() => undefined); }
+      else if (undoChanged) setNoticeUndo(false);
       return true;
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save this change.'); return false; }
     finally { locked.current = false; setBusy(false); }
@@ -81,7 +85,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try { const copy = await recovery.save(await repo.exportJSON(), reason); setRecoveryError(null); setRecoveryRevision(value => value + 1); return copy; }
     catch (reason) { setRecoveryError('The latest recovery copy could not be saved. Earlier copies are kept.'); throw reason; }
   };
-  return <Context.Provider value={{ repo, draft, revision, busy, error, notice, run,
+  return <Context.Provider value={{ repo, draft, revision, busy, error, notice, noticeUndo, run,
     async saveLabelDraft(key, form) { await repo.saveLabelDraft(key, form); setRevision(value => value + 1); },
     async saveRepeatAmounts(reviewId, amounts) {
       try { await repo.saveRepeatAmounts(reviewId, amounts); setRevision(value => value + 1); }

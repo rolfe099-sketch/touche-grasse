@@ -65,7 +65,7 @@ export function Feedback() {
     </View>}
     {app.notice && <Reveal trigger={app.notice} style={{ backgroundColor: colors.selection, paddingLeft: 14, marginHorizontal: 22, marginBottom: 10, borderRadius: 10, flexDirection: 'row', alignItems: 'center' }}>
       <Text accessibilityLiveRegion="polite" style={{ flex: 1, color: colors.action, fontSize: 14, paddingVertical: 8 }}>{app.notice}</Text>
-      {!!app.repo.undo.length && <Pressable accessibilityRole="button" accessibilityLabel={app.repo.undoLabel} disabled={app.busy} onPress={() => void app.run(() => app.repo.undoLast(), app.repo.undoNotice)} style={{ padding: 12, minHeight: 44 }}><Text style={{ color: colors.action, fontWeight: '700' }}>Undo</Text></Pressable>}
+        {app.noticeUndo && !!app.repo.undo.length && <Pressable accessibilityRole="button" accessibilityLabel={app.repo.undoLabel} disabled={app.busy} onPress={() => void app.run(() => app.repo.undoLast(), app.repo.undoNotice)} style={{ padding: 12, minHeight: 44 }}><Text style={{ color: colors.action, fontWeight: '700' }}>Undo</Text></Pressable>}
       <IconButton name="close" label="Dismiss notification" onPress={app.clearNotice} />
     </Reveal>}
   </>;

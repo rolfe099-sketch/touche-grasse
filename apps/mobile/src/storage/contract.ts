@@ -1,4 +1,4 @@
-export type Kind = 'food' | 'log' | 'recipe' | 'draft' | 'undo' | 'deletionUndo' | 'profile' | 'recipeDraft' | 'quickEntry' | 'preparedBatch' | 'targetChange';
+export type Kind = 'food' | 'log' | 'recipe' | 'draft' | 'undo' | 'deletionUndo' | 'profile' | 'recipeDraft' | 'quickEntry' | 'preparedBatch' | 'targetChange' | 'mealShortcut' | 'dayReview';
 export type Stored = { key: string; kind: Kind; id: string; value: unknown };
 export type Change = { type: 'put'; record: Stored } | { type: 'delete'; key: string };
 export type Loaded = { revision: number; records: Stored[] };

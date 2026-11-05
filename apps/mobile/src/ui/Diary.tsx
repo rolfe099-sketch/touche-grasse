@@ -9,6 +9,7 @@ import { Text } from './Text';
 import { colors } from './theme';
 import { Reveal } from './Motion';
 import { foodLabel } from '../domain/foodLanguage';
+import { SaveMealShortcut } from './MealShortcuts';
 import { Icon } from './Icon';
 
 export function DeleteLogButton({ entries, label, onDeleted }: { entries: LogEntry[]; label?: string; onDeleted?: () => void }) {
@@ -30,6 +31,7 @@ function CompactMeal({ items }: { items: LogEntry[] }) {
       <DeleteLogButton entries={items} label={`Delete ${mealLabel(first.meal)} meal, ${items.length} entries`} />
     </View>}
     {many && expanded && <TextButton label="Repeat with changes" accessibilityLabel={`Adjust ${mealLabel(first.meal)} repeat`} disabled={app.busy || !!app.repo.quickEntry.repeatReview} onPress={() => void app.run(() => app.repo.startRepeatReview(items.map(log => log.id))).then(ok => { if (ok) router.push('/entry'); })} />}
+    {(expanded || !many) && <SaveMealShortcut entries={items} />}
     {/* Keep entry components mounted while folding the journal; hidden rows are excluded from layout and accessibility. */}
     <View style={{ display: !many || expanded ? 'flex' : 'none' }}>{items.map(log => <View key={log.id} testID="log-row" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: many ? 10 : 0, paddingVertical: 6 }}>
       <Pressable accessibilityRole="button" accessibilityLabel={`View ${logName(log)} entry`} onPress={() => router.push({ pathname: '/log', params: { id: log.id } })} style={({ pressed }) => ({ flex: 1, minHeight: 48, justifyContent: 'center', gap: 3, opacity: pressed ? .6 : 1 })}>
@@ -57,6 +59,7 @@ export function Diary({ entries, compact = false }: { entries: LogEntry[]; compa
         <Text style={{ width: 22, color: [colors.tangerine, colors.ocean, colors.forrest, colors.toffee][index], fontSize: 11, fontVariant: ['tabular-nums'] }}>{String(index + 1).padStart(2, '0')}</Text><Text accessibilityRole="header" style={{ flex: 1, fontSize: 15, fontWeight: '600' }}>{mealLabel(meal)}</Text><Text style={{ fontSize: 12, color: colors.secondary }}>{display(total(items.map(l => l.nutrition)).kcal, 0)} kcal</Text>
         <IconButton name="repeat" label={`Repeat all ${mealLabel(meal)} entries`} disabled={app.busy} onPress={() => void app.run(() => app.repo.repeatMeal(items.map(log => log.id)), 'Whole meal logged for today')} />
       </View>
+      <SaveMealShortcut entries={items} />
       {items.map(log => <Reveal key={log.id}><View style={[styles.row, compact && { paddingVertical: 5, paddingLeft: 9, marginLeft: 9, borderLeftWidth: 1, borderLeftColor: colors.line }]} testID="log-row">
         <Pressable accessibilityRole="button" accessibilityLabel={`View ${logName(log)} entry`} onPress={() => router.push({ pathname: '/log', params: { id: log.id } })} style={({ pressed }) => ({ flex: 1, minHeight: 44, gap: 4, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
           <Text style={styles.foodName}>{log.snapshot.kind === 'food' ? foodLabel(log.snapshot.ingredient.food) : logName(log)}</Text><Text style={{ fontSize: 12, color: colors.secondary }}>{logQuantity(log)} · {new Date(log.recordedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}{log.corrections?.length ? ' · corrected' : ''}</Text>

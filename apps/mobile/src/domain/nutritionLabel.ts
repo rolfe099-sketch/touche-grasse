@@ -14,7 +14,7 @@ export const labelFormSchema = z.object({ id: z.string().max(200), name: z.strin
   values: z.object({ kcal: z.string().max(100), protein: z.string().max(100), carbohydrate: z.string().max(100), fat: z.string().max(100), fiber: z.string().max(100) }),
   amount: z.string().max(100), scan: labelCandidateSchema.optional(), column: z.number().int().min(0).max(7).optional() });
 export type LabelForm = z.infer<typeof labelFormSchema>;
-const fold = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/æ/g, 'ae').replace(/ø/g, 'o');
+const fold = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/æ/g, 'ae').replace(/ø/g, 'o').replace(/\b(?:grams?|grammes?)\b/g, 'g').replace(/\bmilligrams?\b/g, 'mg').replace(/\bmillilit(?:er|re)s?\b/g, 'ml').replace(/\b(?:kilocalories?|kilokalorier)\b/g, 'kcal').replace(/\bkilojoules?\b/g, 'kj');
 const labels: [typeof nutrients[number], RegExp][] = [ ['kcal', /^(?:energy|energi)\b/i], ['protein', /^(?:protein(?:er)?)\b/i], ['carbohydrate', /^(?:carbohydrates?|karbohydrat(?:er)?|carbs)\b/i], ['fat', /^(?:total\s+)?(?:fat|fett)\b/i], ['fiber', /^(?:dietary\s+)?(?:fibre|fiber|kostfiber)\b/i] ];
 const nutrient = (text: string) => labels.find(([, re]) => re.test(fold(text).trim()));
 export const isNutrientHeading = (text: string) => !!nutrient(text);

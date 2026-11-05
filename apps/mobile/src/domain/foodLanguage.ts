@@ -8,6 +8,14 @@ const groups = [
   ['tomato', 'tomatoes', 'tomat', 'tomater'], ['cooked', 'kokt', 'boiled', 'simmered'],
   ['raw', 'ra', 'uncooked'], ['dry', 'torr'], ['fillet', 'filet'],
   ['wholemeal', 'wholegrain', 'fullkorn'], ['homemade', 'hjemmelaget'],
+  ['cod', 'torsk'], ['haddock', 'hyse'], ['tuna', 'tunfisk'], ['mackerel', 'makrell'],
+  ['oat', 'oats', 'havre'], ['oatmeal', 'havregryn'], ['lentil', 'lentils', 'linse', 'linser'],
+  ['chickpea', 'chickpeas', 'kikert', 'kikerter'], ['bean', 'beans', 'bonne', 'bonner'],
+  ['carrot', 'carrots', 'gulrot', 'gulrotter'], ['onion', 'onions', 'lok'],
+  ['garlic', 'hvitlok'], ['mushroom', 'mushrooms', 'sopp', 'sjampinjong'],
+  ['blueberry', 'blueberries', 'blabaer'], ['raspberry', 'raspberries', 'bringebaer'],
+  ['strawberry', 'strawberries', 'jordbaer'], ['yoghurt', 'yogurt'],
+  ['breast', 'bryst'], ['thigh', 'overlar'], ['skinless', 'skinnfri'],
 ];
 export function vocabulary(words: string[]): string[] {
   const result = new Set(words);
@@ -19,7 +27,8 @@ export function vocabulary(words: string[]): string[] {
   return [...result];
 }
 export function ingredientAliases(normalizedNames: string[]): string[] {
-  return normalizedNames.some(name => /\bparmigiano reggiano\b/.test(name)) ? ['parmesan', 'parmigiano reggiano', 'parmesan cheese'] : [];
+  if (normalizedNames.some(name => /\bparmigiano reggiano\b/.test(name))) return ['parmesan', 'parmigiano reggiano', 'parmesan cheese'];
+  return normalizedNames.some(name => /^havregryn( |$)/.test(name)) ? ['rolled oats', 'oat flakes'] : [];
 }
 function words(text: string) { return text.toLowerCase().replace(/ø/g, 'o').replace(/æ/g, 'ae').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim(); }
 export function cookingRecordAllowed(query: string, food: Food): boolean {
@@ -35,7 +44,7 @@ export function cookingRecordAllowed(query: string, food: Food): boolean {
   // Whole products such as pesto are explicitly listed ingredients. Do not
   // replace a basic meat/grain query with a prepared dish or coated product.
   if (/\b(chicken|kylling|pasta|salmon|laks|cod|torsk|beef|storfe|pork|svin|rice|ris|egg|eggs|potato|potatoes|potet|poteter)\b/.test(input)) {
-    const extras = /\b(pate|postei|breaded|breadcrumbs|battered|panert|nuggets|sausage|polse|sauce|saus|soup|salad|pizza|baguette|butter chicken)\b/;
+    const extras = /\b(pate|paste|postei|breaded|breadcrumbs|battered|panert|nuggets|sausage|polse|sauce|saus|soup|salad|pizza|baguette|butter chicken)\b/;
     if (extras.test(source) && !extras.test(input)) return false;
   }
   return true;
@@ -43,6 +52,7 @@ export function cookingRecordAllowed(query: string, food: Food): boolean {
 export function preparationNeedsChoice(query: string, food: Food): boolean {
   const normalizeWords = (text: string) => text.toLowerCase().replace(/ø/g, 'o').replace(/æ/g, 'ae').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ');
   const source = normalizeWords(`${food.name} ${food.aliases[0] ?? ''}`), input = normalizeWords(query);
+  if (input.trim() === 'oatmeal') return true; // May mean dry flakes, flour or prepared porridge.
   const raw = /\b(raw|ra|uncooked|dry|torr)\b/, cooked = /\b(cooked|kokt|boiled|simmered|fried|roasted|grilled|baked|stekt|ovnsstekt)\b/;
   return (raw.test(source) && !raw.test(input)) || (cooked.test(source) && !cooked.test(input));
 }
@@ -50,6 +60,7 @@ export function preparationNeedsChoice(query: string, food: Food): boolean {
 // description, not catalog IDs. Personal confirmations/favorites rank above it.
 export function ingredientRelevance(query: string, names: string[]): number {
   const all = names.join(' ');
+  if (query === 'oatmeal') return /\bhavregryn\b|oat flakes|rolled oats/.test(all) ? 400 : /porridge|grot/.test(all) ? 100 : 0;
   const chicken = /\b(chicken|kylling)\b|kyllingfilet/.test(query), pasta = /\b(pasta|spaghetti|spagetti)\b/.test(query);
   if (chicken) {
     if (/\b(pate|paste|postei|liver|lever|skin|heart|stock|soup|sausage)\b/.test(query)) {

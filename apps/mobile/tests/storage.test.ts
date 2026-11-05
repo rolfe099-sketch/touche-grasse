@@ -33,6 +33,19 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  it('persists named shortcuts, adjusted amounts, library archives and reviewed days in the real adapter', async () => {
+    const storage = await adapter(), repo = await setup(storage), at = new Date('2026-10-05T12:00:00');
+    const draft = draftFor(), shortcut = await repo.saveDraftShortcut('My breakfast', draft);
+    expect(repo.logs).toEqual([]); await repo.logShortcut(shortcut.id, at);
+    await repo.setDayComplete('2026-10-05', true, at); await repo.saveFood(oil); await repo.archiveLibrary('food', oil.id, true);
+    await repo.startShortcutReview(shortcut.id); await repo.saveRepeatAmounts(repo.quickEntry.repeatReview!.id, ['15']);
+    const reopened = await setup(storage);
+    expect(reopened.shortcuts).toEqual(repo.shortcuts); expect(reopened.dayReviews).toEqual(repo.dayReviews);
+    expect(reopened.quickEntry.repeatReview?.amounts).toEqual(['15']); expect(reopened.quickEntry.libraryHidden?.[`food:${oil.id}`]).toBe(true);
+    const restored = await setup(await adapter()); await restored.restoreJSON(await reopened.exportJSON());
+    expect(restored.shortcuts).toEqual(repo.shortcuts); expect(restored.dayReviews).toEqual(repo.dayReviews);
+    expect(restored.logs).toEqual(repo.logs); await restored.close(); await reopened.close();
+  });
   it('retains scanned label drafts, atomically confirms them without eating food and keeps historical OCR snapshots', async () => {
     const storage = await adapter(), repo = await setup(storage); await repo.saveDraft(draftFor()); const active = structuredClone(repo.draft);
     const scan = parseNutritionLabel({ engine: 'platform', text: 'Per 100 g\nEnergy 400 kcal\nFat 20 g\nCarbohydrate 30 g\nProtein 25 g\nFiber 5 g', blocks: [] });

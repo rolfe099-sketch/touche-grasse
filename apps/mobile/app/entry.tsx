@@ -2,6 +2,7 @@ import { Text, TextInput } from '../src/ui/Text';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput as NativeInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { SaveMealShortcut } from '../src/ui/MealShortcuts';
 import { display, Food, lineIngredient, meals, Recipe, Unit } from '../src/domain/model';
 import { editLiveLine, liveTextIsCurrent, matchIngredient, mealProgress, recentMealBatches, updateLiveText } from '../src/domain/quickEntry';
 import { applyCommand, yesterdayMealEntries } from '../src/domain/commands';
@@ -56,6 +57,7 @@ export default function Entry() {
       else if (result.kind === 'recipe') { if (!progress.valid) throw new Error('Resolve the ingredient rows before saving a recipe.'); openRecipe(); }
       else if (result.kind === 'log') { if (draft.splitPlan) throw new Error('Save this batch first, then log the servings you ate.'); void run(() => repo.logDraft(draft), 'Meal logged', true).then(ok => { if (ok) router.dismissTo('/'); }); }
       else if (result.kind === 'repeat') { const last = result.yesterdayMeal ? yesterdayMealEntries(repo.logs, result.yesterdayMeal) : recentMealBatches(repo.logs, 1)[0]; if (!last?.length) throw new Error(result.yesterdayMeal ? `No ${mealLabel(result.yesterdayMeal).toLowerCase()} was logged yesterday.` : 'There is no previous meal to repeat.'); void run(() => repo.repeatMeal(last.map(log => log.id)), 'Previous meal logged').then(ok => { if (ok) router.dismissTo('/'); }); }
+      else if (result.kind === 'shortcut') { const active = repo.shortcuts.filter(item => !item.deletedAt), exact = active.filter(item => normalize(item.name) === normalize(result.name)); const matches = exact.length ? exact : active.filter(item => normalize(item.name) === normalize(result.name).replace(/^my /, '')); if (matches.length !== 1) throw new Error(matches.length ? 'More than one shortcut matches. Use a unique shortcut name.' : 'No saved meal has that name. Save a shortcut in Quick Log first.'); void run(() => repo.logShortcut(matches[0].id), `${matches[0].name} logged`).then(ok => { if (ok) router.dismissTo('/'); }); }
       else { const exact = repo.preparedBatches.filter(batch => normalize(batch.recipe.name) === normalize(result.name)); const batches = exact.length ? exact : repo.preparedBatches.filter(batch => normalize(batch.recipe.name).includes(normalize(result.name))); if (batches.length !== 1) throw new Error('Use the exact name of one saved batch.'); void run(() => repo.logPreparedBatch(batches[0].id, result.quantity), 'Saved portion logged').then(ok => { if (ok) router.dismissTo('/'); }); }
       return true;
     } catch (error) { setParseError(error instanceof Error ? error.message : 'Check that command.'); return false; }
@@ -126,6 +128,7 @@ export default function Entry() {
           </View>}
         </View></Reveal>;
       })}
+      {progress.valid && !draft.splitPlan && <SaveMealShortcut draft={draft} />}
       {!!draft.lines.length && <><Pressable accessibilityRole="button" accessibilityLabel={`Change meal type, ${mealLabel(draft.meal)}`} accessibilityState={{ expanded: mealPicker }} aria-expanded={mealPicker} onPress={() => { Keyboard.dismiss(); setMealPicker(!mealPicker); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, alignSelf: 'flex-start', marginTop: 4 }}><Text style={{ color: colors.secondary, fontSize: 13 }}>Log to</Text><Text style={{ fontSize: 14 }}>{mealLabel(draft.meal)}</Text><Icon name="next" size={12} color={colors.secondary} /></Pressable>{mealPicker && <View style={{ flexDirection: 'row' }}>{meals.map(meal => <SegmentButton key={meal} label={mealLabel(meal)} selected={draft.meal === meal} onPress={() => { setDraft({ ...draft, meal }); setMealPicker(false); }} disabled={busy} />)}</View>}<View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><TextButton label="Add food" disabled={busy} onPress={() => { setAdding(!adding); setEditing(undefined); }} /><TextButton label="Split into servings" disabled={!progress.valid || busy} onPress={() => setDraft({ ...draft, splitPlan: draft.splitPlan ?? { name: draft.recipeName ?? 'Meal prep', servingsText: '6', cookedWeightText: '' } })} /><TextButton label="Make a recipe" disabled={!progress.valid || busy} onPress={openRecipe} /></View></>}
       {(!draft.lines.length || adding) && !createdBatch && <View style={{ marginTop: 8 }}>
         <Field label="Search the food library" placeholder="Search foods" testID="entry-search" value={query} onChangeText={setQuery} autoCorrect={false} editable={!busy} style={{ borderRadius: 6 }} />

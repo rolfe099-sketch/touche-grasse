@@ -3,7 +3,7 @@ import { ingredientText, spokenNumbers } from './naturalInput';
 import { editLiveLine, QuickEntryPreferences, updateLiveText } from './quickEntry';
 import { FoodIndex, normalize } from './search';
 
-export type MealCommand = { kind: 'draft'; draft: Draft; message: string } | { kind: 'log' } | { kind: 'recipe' } | { kind: 'repeat'; yesterdayMeal?: Meal } | { kind: 'portion'; name: string; quantity: string };
+export type MealCommand = { kind: 'draft'; draft: Draft; message: string } | { kind: 'log' } | { kind: 'recipe' } | { kind: 'repeat'; yesterdayMeal?: Meal } | { kind: 'shortcut'; name: string } | { kind: 'portion'; name: string; quantity: string };
 export function applyCommand(input: string, draft: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory): MealCommand {
   const text = spokenNumbers(input).trim().replace(/[.!?]+$/, '');
   if (!text) throw new Error('Say or type a command first.');
@@ -14,6 +14,10 @@ export function applyCommand(input: string, draft: Draft, index: FoodIndex, pref
   if (/^(save|open|finish) (this |the )?recipe$/i.test(text)) return { kind: 'recipe' };
   const portion = /^log (\d+(?:[.,]\d+)?) (?:servings?|portions?) of (.+)$/i.exec(text);
   if (portion) { const quantity = parseAmount(portion[1]); if (!quantity || quantity === '0') throw new Error('Check the serving amount.'); return { kind: 'portion', quantity, name: portion[2].trim() }; }
+  const named = /^(?:log|repeat) shortcut (.+)$/i.exec(text);
+  if (named) return { kind: 'shortcut', name: named[1].trim() };
+  const shortcut = /^(?:log|repeat) (my .+?)(?: today)?$/i.exec(text);
+  if (shortcut) return { kind: 'shortcut', name: shortcut[1].trim() };
   const recipe = /^(?:start|create|make|name|call) (?:a |this |the )?recipe(?: called| named)?\s+(.+)$/i.exec(text);
   if (recipe) return { kind: 'draft', draft: { ...draft, recipeName: recipe[1].slice(0, 300) }, message: `Recipe: ${recipe[1]}` };
   const split = /^(?:split|divide|make)(?: (?:it|this|the meal))?(?: into)? (\d+(?:[.,]\d+)?) (?:servings?|portions?)$/i.exec(text);

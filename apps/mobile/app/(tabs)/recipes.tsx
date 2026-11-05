@@ -20,6 +20,7 @@ import { SavedPortionList } from '../../src/ui/Portions';
 
 import { plural } from '../../src/i18n';
 
+import { MealShortcuts } from '../../src/ui/MealShortcuts';
 import { foodLabel } from '../../src/domain/foodLanguage';
 
 export default function Recipes() {
@@ -28,9 +29,11 @@ export default function Recipes() {
 
   const [section, setSection] = useState<'all' | 'recipes' | 'foods' | 'portions'>('all'), [query, setQuery] = useState('');
 
-  const recipes = [...app.repo.recipes].filter(recipe => recipe.name.toLowerCase().includes(query.toLowerCase())).sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name, 'en'));
+  const [archived, setArchived] = useState(false);
+  const hidden = (kind: string, id: string) => !!app.repo.quickEntry.libraryHidden?.[`${kind}:${id}`];
+  const recipes = [...app.repo.recipes].filter(recipe => hidden('recipe', recipe.id) === archived).filter(recipe => recipe.name.toLowerCase().includes(query.toLowerCase())).sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name, 'en'));
 
-  const foods = query.trim() ? app.repo.index.search(query, true) : app.repo.foods;
+  const foods = (query.trim() ? app.repo.index.search(query, true) : app.repo.foods).filter(food => hidden('food', food.id) === archived);
 
   return <Screen support title="Library" trailing={<IconButton name="plus" label="New recipe" onPress={() => router.push('/recipe')} />}>
 
@@ -38,7 +41,10 @@ export default function Recipes() {
 
     <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 12, padding: 4, marginBottom: 14 }}>{(['all', 'recipes', 'foods', 'portions'] as const).map(value => <SegmentButton key={value} label={value === 'all' ? 'Everything' : value[0].toUpperCase() + value.slice(1)} accessibilityLabel={`Library ${value}`} selected={section === value} onPress={() => setSection(value)} />)}</View>
 
-    {(section === 'all' || section === 'portions') && <SavedPortionList query={query} />}
+    <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}><TextButton label={archived ? 'Show active library' : 'Archived foods and recipes'} onPress={() => setArchived(!archived)} /></View>
+    {section === 'all' && !archived && <MealShortcuts library query={query} />}
+
+    {!archived && (section === 'all' || section === 'portions') && <SavedPortionList query={query} />}
 
     {(section === 'all' || section === 'recipes') && <>
 
@@ -56,11 +62,11 @@ export default function Recipes() {
 
       </Pressable><Button label="Log 1" icon="plus" compact accessibilityLabel="Log one serving" disabled={app.busy} onPress={() => void app.run(() => app.repo.logRecipe(recipe), 'One serving logged')} /></View>
 
-      <View style={{ flexDirection: 'row', gap: 16, marginLeft: recipe.photo ? 67 : 47, marginTop: 3, alignItems: 'center' }}><IconButton name={recipe.favorite ? 'check' : 'bookmark'} label={`${recipe.favorite ? 'Unfavourite' : 'Favourite'} ${recipe.name}`} onPress={() => void app.run(() => app.repo.saveRecipe({ ...recipe, favorite: !recipe.favorite }))} /><TextButton label="Edit" onPress={() => router.push({ pathname: '/recipe', params: { id: recipe.id } })} /></View>
+      <View style={{ flexDirection: 'row', gap: 16, marginLeft: recipe.photo ? 67 : 47, marginTop: 3, alignItems: 'center' }}><IconButton name={recipe.favorite ? 'check' : 'bookmark'} label={`${recipe.favorite ? 'Unfavourite' : 'Favourite'} ${recipe.name}`} onPress={() => void app.run(() => app.repo.saveRecipe({ ...recipe, favorite: !recipe.favorite }))} /><TextButton label={archived ? 'Restore' : 'Archive'} accessibilityLabel={`${archived ? 'Restore' : 'Archive'} recipe ${recipe.name}`} disabled={app.busy} onPress={() => void app.run(() => app.repo.archiveLibrary('recipe', recipe.id, !archived), archived ? 'Recipe restored' : 'Recipe archived · restore it in Archived foods and recipes')} /><TextButton label="Edit" onPress={() => router.push({ pathname: '/recipe', params: { id: recipe.id } })} /></View>
 
     </View>)}</>}
 
-    {(section === 'all' || section === 'foods') && <><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}><Text style={{ fontWeight: '700', fontSize: 25 }}>Personal foods</Text><TextButton label="Create a food" onPress={() => router.push('/manual')} /></View>{foods.length ? foods.map(food => <FoodRow key={food.id} food={food} saved onEdit={food.provenance.source !== 'matvaretabellen' ? () => router.push({ pathname: '/manual', params: { edit: food.id } }) : undefined} onSelect={() => { app.setDraft({ ...app.draft, lines: [...app.draft.lines, { id: app.repo.id(), query: food.name, quantityText: '100', unit: food.referenceUnit, food, ...(['openFoodFacts', 'confirmedOCR'].includes(food.provenance.source) ? { entrySource: 'product' as const } : {}) }] }); router.push('/entry'); }} />) : <Text style={{ color: colors.secondary, fontSize: 14, paddingVertical: 10 }}>Foods you save or log will appear here.</Text>}</>}
+    {(section === 'all' || section === 'foods') && <><View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}><Text style={{ fontWeight: '700', fontSize: 25 }}>Personal foods</Text><TextButton label="Create a food" onPress={() => router.push('/manual')} /></View>{foods.length ? foods.map(food => <View key={food.id}><FoodRow food={food} saved onEdit={food.provenance.source !== 'matvaretabellen' ? () => router.push({ pathname: '/manual', params: { edit: food.id } }) : undefined} onSelect={() => { app.setDraft({ ...app.draft, lines: [...app.draft.lines, { id: app.repo.id(), query: food.name, quantityText: '100', unit: food.referenceUnit, food, ...(['openFoodFacts', 'confirmedOCR'].includes(food.provenance.source) ? { entrySource: 'product' as const } : {}) }] }); router.push('/entry'); }} /><TextButton label={archived ? 'Restore' : 'Archive'} accessibilityLabel={`${archived ? 'Restore' : 'Archive'} food ${food.name}`} disabled={app.busy} onPress={() => void app.run(() => app.repo.archiveLibrary('food', food.id, !archived), archived ? 'Food restored' : 'Food archived · restore it in Archived foods and recipes')} /></View>) : <Text style={{ color: colors.secondary, fontSize: 14, paddingVertical: 10 }}>Foods you save or log will appear here.</Text>}</>}
 
   </Screen>;
 
