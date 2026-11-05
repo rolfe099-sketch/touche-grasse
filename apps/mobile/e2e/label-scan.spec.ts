@@ -156,7 +156,10 @@ test('reported unfinished native readout repairs energy and requires two explici
   await page.goto('/settings'); const chooser = page.waitForEvent('filechooser'); await page.getByRole('button', { name: 'Choose a backup file', exact: true }).click();
   await (await chooser).setFiles({ name: 'synthetic-unit-review.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(value)) });
   await page.getByRole('button', { name: 'Confirm restore', exact: true }).click(); await expect(page.getByText('Backup restored', { exact: true })).toBeVisible();
-  await page.goto('/manual');
+  await page.goto('/'); await page.getByTestId('universal-log').click();
+  const resume = page.getByRole('button', { name: 'Continue label review', exact: true }); await expect(resume).toBeInViewport();
+  await expect(page.getByTestId('quick-text')).not.toBeFocused(); await resume.click();
+  expect(new URL(page.url()).searchParams.has('capture')).toBe(false);
   await expect(page.getByRole('textbox', { name: 'Energy \u00b7 kcal', exact: true })).toHaveValue('488');
   for (const label of ['Protein \u00b7 g', 'Fiber \u00b7 g']) { const field = page.getByRole('textbox', { name: label, exact: true }); await expect(field).toHaveValue(''); await expect(field).toHaveAttribute('placeholder', 'Confirm unit'); }
   await page.screenshot({ path: path.join(output, `${test.info().project.name || 'chromium'}-unit-confirmation.png`), fullPage: true });
@@ -171,4 +174,31 @@ test('reported unfinished native readout repairs energy and requires two explici
   await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('–');
   const saved = await exportJSON(page); expect(saved.logs).toEqual([]); expect(saved.foods[0].nutrition.protein).toBe('5.6'); expect(saved.foods[0].nutrition.fiber).toBe('3.2');
   expect(saved.foods[0].provenance.labelScan.originalNutrition.protein).toBeNull(); expect(saved.foods[0].provenance.labelScan.originalNutrition.fiber).toBeNull();
+});
+
+
+test('saved label resumes from Today in two taps after reload without a photo or losing the separate meal', async ({ page }) => {
+  const stored = (key: string) => page.evaluate(key => new Promise<unknown>((resolve, reject) => { const request = indexedDB.open('touche-grasse-v1'); request.onerror = () => reject(request.error); request.onsuccess = () => { const db = request.result, tx = db.transaction('records', 'readonly'), record = tx.objectStore('records').get(key); tx.oncomplete = () => { resolve(record.result?.value); db.close(); }; }; }), key);
+  await page.goto('/entry'); await page.getByTestId('quick-text').fill('10g olive oil');
+  await expect.poll(async () => (await stored('draft:active') as { lines?: { quantityText: string }[] })?.lines?.[0]?.quantityText).toBe('10');
+  await page.goto('/manual?barcode=7038010001918');
+  await page.getByRole('textbox', { name: 'Food name', exact: true }).fill('Pending package');
+  await page.getByRole('textbox', { name: 'Energy \u00b7 kcal', exact: true }).fill('488');
+  await page.getByRole('textbox', { name: 'Barcode (optional)', exact: true }).fill('012345678905');
+  await page.getByRole('textbox', { name: 'Amount to add \u00b7 g', exact: true }).fill('37');
+  await expect.poll(async () => (await stored('quickEntry:preferences') as { labelDrafts?: Record<string, LabelForm> })?.labelDrafts?.['new:7038010001918']?.amount).toBe('37');
+  await page.goto('/'); await page.reload(); let photos = 0; page.on('filechooser', () => { photos++; });
+  await page.getByTestId('universal-log').click();
+  const resume = page.getByRole('button', { name: 'Continue label review', exact: true }); await expect(resume).toBeInViewport();
+  await page.screenshot({ path: path.join(output, `${test.info().project.name || 'chromium'}-continue-label.png`) });
+  await resume.click();
+  expect(new URL(page.url()).searchParams.has('capture')).toBe(false); expect(photos).toBe(0);
+  await expect(page.getByRole('textbox', { name: 'Food name', exact: true })).toHaveValue('Pending package');
+  await expect(page.getByRole('textbox', { name: 'Barcode (optional)', exact: true })).toHaveValue('012345678905');
+  await expect(page.getByRole('textbox', { name: 'Energy \u00b7 kcal', exact: true })).toHaveValue('488');
+  await expect(page.getByRole('textbox', { name: 'Amount to add \u00b7 g', exact: true })).toHaveValue('37');
+  await page.getByRole('button', { name: 'Discard label draft', exact: true }).click();
+  await expect(page).toHaveURL(/\/entry$/); await expect(page.getByTestId('label-draft-resume')).toHaveCount(0); await expect(page.getByTestId('quantity-0')).toHaveValue('10');
+  const saved = await exportJSON(page); expect(saved.logs).toEqual([]); expect(saved.foods).toEqual([]); expect(saved.draft.lines[0].quantityText).toBe('10');
+  writeFileSync(path.join(output, `${test.info().project.name || 'chromium'}-resume-interactions.json`), JSON.stringify({ actions: ['Log', 'Continue label review'], interactions: 2, newPhotos: photos, preservedLabelAmount: '37', preservedMealAmount: '10' }, null, 2));
 });

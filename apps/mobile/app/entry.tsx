@@ -18,6 +18,8 @@ import { Scanner } from '../src/ui/Scanner';
 import { EntryFrame } from '../src/ui/EntryFrame';
 import { RepeatMealReview } from '../src/ui/RepeatMealReview';
 import { Reveal } from '../src/ui/Motion';
+import { labelReviewTargets } from '../src/domain/labelDrafts';
+import { LabelDraftResume } from '../src/ui/LabelDraftResume';
 
 export default function Entry() {
   const { repo, draft, setDraft, revision, busy, run } = useApp();
@@ -37,6 +39,7 @@ export default function Entry() {
   const [more, setMore] = useState(false);
   const [createdBatch, setCreatedBatch] = useState<string>();
   const progress = useMemo(() => mealProgress(draft), [draft]);
+  const labelReviews = useMemo(() => { void revision; return labelReviewTargets(repo.quickEntry.labelDrafts, new Set(repo.foods.filter(food => food.provenance.source !== 'matvaretabellen').map(food => food.id))); }, [repo, revision]);
   const active = adding || unitsFor ? undefined : draft.lines.find(line => line.id === editing) ?? draft.lines.find(line => !line.food);
   const activeQuery = active ? filter?.id === active.id ? filter.text : active.query : '';
   const candidates = useMemo(() => {
@@ -77,7 +80,7 @@ export default function Entry() {
       try { setDraft(updateLiveText(draft.text, draft, repo.index, repo.quickEntry, repo.id)); } catch { /* Keep source text for correction, including older parser drafts. */ }
     }
   }, [draft, repo, setDraft]);
-  if (repo.quickEntry.repeatReview) return <EntryFrame><Screen keyboardInsets={false} support title="Quick Log" back><RepeatMealReview onLogged={() => router.dismissTo('/')} /></Screen></EntryFrame>;
+  if (repo.quickEntry.repeatReview) return <EntryFrame><Screen keyboardInsets={false} support title="Quick Log" back><LabelDraftResume reviews={labelReviews} disabled={busy} /><RepeatMealReview onLogged={() => router.dismissTo('/')} /></Screen></EntryFrame>;
   const splitting = draft.splitPlan;
   const footer = !!draft.lines.length && !(splitting && progress.valid) && <>
     <View testID="meal-nutrition">
@@ -90,8 +93,9 @@ export default function Entry() {
   </>;
   return <EntryFrame>
     <Screen keyboardInsets={false} support title={draft.recipeName ? 'Build a recipe' : 'Quick Log'} back footer={footer} trailing={<IconButton name="type" label="Type commands" onPress={() => { Keyboard.dismiss(); setMode('text'); setCommandsOpen(!commandsOpen); }} />}>
+      <LabelDraftResume reviews={labelReviews} disabled={busy} />
       <VoiceEntry onCommand={command} disabled={busy} mode={mode} onMode={selectMode} onReview={() => setMode('text')} onType={focusSource} commandsOpen={commandsOpen} onCommands={setCommandsOpen} autoStart={params.mode === 'voice'}>
-        <TextInput ref={source} autoFocus={initialMode === 'text' && !draft.lines.length} onFocus={() => setSourceFocused(true)} onBlur={() => setSourceFocused(false)} accessibilityLabel="Meal" testID="quick-text" placeholder="200g chicken, 150g pasta…" placeholderTextColor={colors.secondary} style={{ paddingHorizontal: 13, paddingVertical: 10, minHeight: 50, maxHeight: sourceFocused ? 115 : 64, fontSize: 17, lineHeight: 22 }} value={draft.text} multiline maxLength={10000} onChangeText={typeMeal} editable={!busy} />
+        <TextInput ref={source} autoFocus={initialMode === 'text' && !draft.lines.length && !labelReviews.length} onFocus={() => setSourceFocused(true)} onBlur={() => setSourceFocused(false)} accessibilityLabel="Meal" testID="quick-text" placeholder="200g chicken, 150g pasta…" placeholderTextColor={colors.secondary} style={{ paddingHorizontal: 13, paddingVertical: 10, minHeight: 50, maxHeight: sourceFocused ? 115 : 64, fontSize: 17, lineHeight: 22 }} value={draft.text} multiline maxLength={10000} onChangeText={typeMeal} editable={!busy} />
       </VoiceEntry>
       {mode === 'scan' && <Scanner onAdded={() => setMode('text')} />}
       {draft.recipeName && <Text style={{ fontSize: 13, fontWeight: '600', color: colors.action, marginBottom: 6 }}>{draft.recipeName}</Text>}

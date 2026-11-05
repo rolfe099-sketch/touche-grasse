@@ -2,6 +2,8 @@
 
 Log → Scan → Photograph nutrition label opens the camera on the native app. Press the shutter and choose Use Photo. On the web, Scan a nutrition label opens the existing food-label form, then Choose label photo opens the file picker. Barcode scanning has its own Scan barcode action. Review the recognized values, select the appropriate column when needed, enter the product name and amount, then Confirm and add. This saves the food and appends a draft ingredient; the usual meal Log action records it as eaten. Existing label editing uses the same workflow.
 
+Quick Log shows **Continue label review** above the entry methods when a saved label draft exists. It opens the saved form directly, without a camera intent, and keeps any separate unfinished meal intact. The first three reviews are shown, with an inline action to show the rest. Saving or discarding a label removes its resume action. Original draft keys are retained even when an editable barcode changes; edits to existing foods keep their food/ingredient identifiers. Empty or unavailable drafts do not produce a nonworking resume control. Ordinary entry without a saved label keeps its existing automatic focus.
+
 ## Accuracy and preparation
 
 The parser accepts explicit per-100-g/ml headers and measured serving weights/volumes. Multiple columns remain separate and require a selection; prepared alternatives are marked and require explicit selection. Serving values are normalized using their printed g/ml amount. Amounts are cleared when switching g/ml; no density, cooking yield or absorption is inferred. Unknown serving weights require manual entry.
