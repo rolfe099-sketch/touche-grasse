@@ -1,11 +1,15 @@
-import { dayKey, Draft, IdFactory, LogEntry, Meal, parseAmount } from './model';
+import { D, dayKey, Draft, IdFactory, LogEntry, Meal, parseAmount } from './model';
 import { ingredientText, spokenNumbers } from './naturalInput';
 import { editLiveLine, QuickEntryPreferences, updateLiveText } from './quickEntry';
 import { FoodIndex, normalize } from './search';
 
 export type MealCommand = { kind: 'draft'; draft: Draft; message: string } | { kind: 'log' } | { kind: 'recipe' } | { kind: 'repeat'; yesterdayMeal?: Meal } | { kind: 'shortcut'; name: string } | { kind: 'portion'; name: string; quantity: string };
 export function applyCommand(input: string, draft: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory): MealCommand {
-  const text = spokenNumbers(input).trim().replace(/[.!?]+$/, '');
+  const text = spokenNumbers(input).trim().replace(/[.!?]+$/, '')
+    .replace(/^(?:I'm|I am) making\s+/i, 'Start a recipe called ')
+    .replace(/^jeg lager\s+/i, 'Start a recipe called ')
+    .replace(/^endre (.+?) til /i, 'Change $1 to ').replace(/^fjern /i, 'Remove ')
+    .replace(/^del (?:det |den )?(?:i |opp i )?/i, 'Split into ').replace(/\bporsjoner?\b/gi, 'servings');
   if (!text) throw new Error('Say or type a command first.');
   if (/^(log|save) (it|this|meal|this meal)( now| today)?$/i.test(text)) return { kind: 'log' };
   if (/^(repeat|log) (my |the )?last meal$/i.test(text)) return { kind: 'repeat' };
@@ -20,7 +24,7 @@ export function applyCommand(input: string, draft: Draft, index: FoodIndex, pref
   if (shortcut) return { kind: 'shortcut', name: shortcut[1].trim() };
   const recipe = /^(?:start|create|make|name|call) (?:a |this |the )?recipe(?: called| named)?\s+(.+)$/i.exec(text);
   if (recipe) return { kind: 'draft', draft: { ...draft, recipeName: recipe[1].slice(0, 300) }, message: `Recipe: ${recipe[1]}` };
-  const split = /^(?:split|divide|make)(?: (?:it|this|the meal))?(?: into)? (\d+(?:[.,]\d+)?) (?:servings?|portions?)$/i.exec(text);
+  const split = /^(?:(?:split|divide|make)(?: (?:it|this|the meal))?(?: into)? )?(\d+(?:[.,]\d+)?) (?:servings?|portions?)$/i.exec(text);
   if (split) {
     const servingsText = parseAmount(split[1]); if (!servingsText || servingsText === '0' || Number(servingsText) > 10000) throw new Error('Check the serving count.');
     return { kind: 'draft', draft: { ...draft, splitPlan: { name: draft.recipeName ?? draft.splitPlan?.name ?? 'Meal prep', cookedWeightText: draft.splitPlan?.cookedWeightText ?? '', servingsText } }, message: `Split into ${servingsText} servings · save when ready` };
@@ -28,7 +32,7 @@ export function applyCommand(input: string, draft: Draft, index: FoodIndex, pref
   const weight = /^(?:set )?(?:final |cooked |final cooked )?(?:batch )?weight(?: to| is)? (\d+(?:[.,]\d+)?)\s*(g|grams?|kg|kilograms?)$/i.exec(text);
   if (weight) {
     const parsed = parseAmount(weight[1]); if (!parsed || parsed === '0') throw new Error('Check the measured weight.');
-    const cookedWeightText = /^(kg|kilogram)/i.test(weight[2]) ? String(Number(parsed) * 1000) : parsed;
+    const cookedWeightText = /^(kg|kilogram)/i.test(weight[2]) ? new D(parsed).times(1000).toFixed() : parsed;
     return { kind: 'draft', draft: { ...draft, splitPlan: { name: draft.recipeName ?? draft.splitPlan?.name ?? 'Meal prep', servingsText: draft.splitPlan?.servingsText ?? '1', cookedWeightText } }, message: `Measured cooked weight: ${cookedWeightText} g` };
   }
   const change = /^(?:change|set|make) (.+?)(?: to| at| is) (\d+(?:[.,]\d+)?)\s*(g|grams?|kg|kilograms?|ml|milliliters?|l|liters?)$/i.exec(text);
@@ -50,6 +54,28 @@ export function applyCommand(input: string, draft: Draft, index: FoodIndex, pref
   const linked = { ...draft, text: previous, textRows: draft.lines.map(({ id, query, quantityText, unit }) => ({ id, query, quantityText, unit })) };
   const next = updateLiveText([previous, added].filter(Boolean).join(', '), linked, index, preferences, id);
   return { kind: 'draft', draft: next, message: 'Ingredients added · check product matches' };
+}
+
+// Only explicit command boundaries split an utterance. Ingredient conjunctions,
+// decimal commas and food names remain the ingredient parser's responsibility.
+// Nothing is persisted until every clause has validated successfully.
+export function applyCommandSequence(input: string, original: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory): { draft: Draft; command: MealCommand } {
+  const verb = '(?:add|change|set|remove|split|divide|save|log|repeat|start|create|make|finish|open|final\\s+(?:cooked\\s+)?weight|cooked\\s+weight|legg\\s+til|endre|fjern|del)\\b';
+  const numberedServings = '(?:(?:\\d+(?:[.,]\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\\s+(?:servings?|portions?))\\b';
+  const boundary = new RegExp('(?:\\s+(?:and\\s+)?then\\s+|\\s+(?:and|og)\\s+|[.;!?]\\s*(?:(?:then|and|og)\\s+)?)(?=(?:' + verb + '|' + numberedServings + '))', 'i');
+  const clauses = input.trim().split(boundary).map(clause => clause.trim()).filter(Boolean);
+  if (clauses.length > 30) throw new Error('Use up to 30 commands at a time.');
+  let draft = original, result: MealCommand | undefined;
+  for (let i = 0; i < clauses.length; i++) {
+    result = applyCommand(clauses[i], draft, index, preferences, id);
+    if (result.kind === 'draft') draft = result.draft;
+    else {
+      if (i !== clauses.length - 1) throw new Error('Logging or opening a recipe must be the last command. Nothing changed.');
+      if (draft !== original && !['log', 'recipe'].includes(result.kind)) throw new Error('Apply ingredient changes before repeating or logging another saved meal. Nothing changed.');
+    }
+  }
+  if (!result) throw new Error('Say or type a command first.');
+  return { draft, command: result };
 }
 
 export function yesterdayMealEntries(logs: LogEntry[], meal: Meal, now = new Date()): LogEntry[] {

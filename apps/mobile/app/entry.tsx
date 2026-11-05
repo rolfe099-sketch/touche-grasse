@@ -6,7 +6,7 @@ import { MealEditor } from '../src/ui/MealEditor';
 import { SaveMealShortcut } from '../src/ui/MealShortcuts';
 import { display, Food, lineIngredient, meals, Recipe, Unit } from '../src/domain/model';
 import { editLiveLine, liveTextIsCurrent, matchIngredient, mealProgress, recentMealBatches, updateLiveText } from '../src/domain/quickEntry';
-import { applyCommand, yesterdayMealEntries } from '../src/domain/commands';
+import { applyCommandSequence, yesterdayMealEntries } from '../src/domain/commands';
 import { foodLabel } from '../src/domain/foodLanguage';
 import { normalize } from '../src/domain/search';
 import { useApp } from '../src/state/AppContext';
@@ -50,17 +50,44 @@ export default function Entry() {
   }, [active, activeQuery, repo, revision, more]);
   const results = useMemo(() => { void revision; return query.trim() ? repo.index.search(query).slice(0, 6) : []; }, [repo, query, revision]);
   function openRecipe() { router.push({ pathname: '/recipe', params: { from: 'draft', name: draft.recipeName } }); }
-  function command(text: string) {
+  async function command(text: string, voiceId: string) {
     if (busy) return false;
     try {
-      const result = applyCommand(text, draft, repo.index, repo.quickEntry, repo.id); setParseError(undefined);
-      if (result.kind === 'draft') { setDraft(result.draft); setCommandNotice(result.message); setEditing(undefined); setFilter(undefined); }
-      else if (result.kind === 'recipe') { if (!progress.valid) throw new Error('Resolve the ingredient rows before saving a recipe.'); openRecipe(); }
-      else if (result.kind === 'log') { if (draft.splitPlan) throw new Error('Save this batch first, then log the servings you ate.'); void run(() => repo.logDraft(draft), 'Meal logged', true).then(ok => { if (ok) router.dismissTo('/'); }); }
-      else if (result.kind === 'repeat') { const last = result.yesterdayMeal ? yesterdayMealEntries(repo.logs, result.yesterdayMeal) : recentMealBatches(repo.logs, 1)[0]; if (!last?.length) throw new Error(result.yesterdayMeal ? `No ${mealLabel(result.yesterdayMeal).toLowerCase()} was logged yesterday.` : 'There is no previous meal to repeat.'); void run(() => repo.repeatMeal(last.map(log => log.id)), 'Previous meal logged').then(ok => { if (ok) router.dismissTo('/'); }); }
-      else if (result.kind === 'shortcut') { const active = repo.shortcuts.filter(item => !item.deletedAt), exact = active.filter(item => normalize(item.name) === normalize(result.name)); const matches = exact.length ? exact : active.filter(item => normalize(item.name) === normalize(result.name).replace(/^my /, '')); if (matches.length !== 1) throw new Error(matches.length ? 'More than one shortcut matches. Use a unique shortcut name.' : 'No saved meal has that name. Save a shortcut in Quick Log first.'); void run(() => repo.logShortcut(matches[0].id), `${matches[0].name} logged`).then(ok => { if (ok) router.dismissTo('/'); }); }
-      else { const exact = repo.preparedBatches.filter(batch => normalize(batch.recipe.name) === normalize(result.name)); const batches = exact.length ? exact : repo.preparedBatches.filter(batch => normalize(batch.recipe.name).includes(normalize(result.name))); if (batches.length !== 1) throw new Error('Use the exact name of one saved batch.'); void run(() => repo.logPreparedBatch(batches[0].id, result.quantity), 'Saved portion logged').then(ok => { if (ok) router.dismissTo('/'); }); }
-      return true;
+      const sequence = applyCommandSequence(text, draft, repo.index, repo.quickEntry, repo.id), result = sequence.command, next = sequence.draft;
+      setParseError(undefined);
+      if (result.kind === 'draft') {
+        const ok = await run(() => repo.saveDraft(next, voiceId), undefined, true);
+        if (ok) { setCommandNotice(result.message); setEditing(undefined); setFilter(undefined); }
+        return ok;
+      }
+      if (result.kind === 'recipe') {
+        if (!mealProgress(next).valid) throw new Error('Resolve the ingredient rows before saving a recipe.');
+        const ok = await run(() => repo.saveDraft(next, voiceId), undefined, true);
+        if (ok) router.push({ pathname: '/recipe', params: { from: 'draft', name: next.recipeName } });
+        return ok;
+      }
+      let action: () => Promise<unknown>, notice: string;
+      if (result.kind === 'log') {
+        if (next.splitPlan) throw new Error('Save this batch first, then log the servings you ate.');
+        action = () => repo.logDraft(next, new Date(), voiceId); notice = 'Meal logged';
+      } else if (result.kind === 'repeat') {
+        const last = result.yesterdayMeal ? yesterdayMealEntries(repo.logs, result.yesterdayMeal) : recentMealBatches(repo.logs, 1)[0];
+        if (!last?.length) throw new Error(result.yesterdayMeal ? `No ${mealLabel(result.yesterdayMeal).toLowerCase()} was logged yesterday.` : 'There is no previous meal to repeat.');
+        action = () => repo.repeatMeal(last.map(log => log.id), new Date(), voiceId); notice = 'Previous meal logged';
+      } else if (result.kind === 'shortcut') {
+        const active = repo.shortcuts.filter(item => !item.deletedAt), exact = active.filter(item => normalize(item.name) === normalize(result.name));
+        const matches = exact.length ? exact : active.filter(item => normalize(item.name) === normalize(result.name).replace(/^my /, ''));
+        if (matches.length !== 1) throw new Error(matches.length ? 'More than one shortcut matches. Use a unique shortcut name.' : 'No saved meal has that name. Save a shortcut in Quick Log first.');
+        action = () => repo.logShortcut(matches[0].id, new Date(), voiceId); notice = `${matches[0].name} logged`;
+      } else {
+        const exact = repo.preparedBatches.filter(batch => normalize(batch.recipe.name) === normalize(result.name));
+        const batches = exact.length ? exact : repo.preparedBatches.filter(batch => normalize(batch.recipe.name).includes(normalize(result.name)));
+        if (batches.length !== 1) throw new Error('Use the exact name of one saved batch.');
+        action = () => repo.logPreparedBatch(batches[0].id, result.quantity, 'servings', new Date(), undefined, voiceId); notice = 'Saved portion logged';
+      }
+      const ok = await run(action, notice, result.kind === 'log');
+      if (ok) router.dismissTo('/');
+      return ok;
     } catch (error) { setParseError(error instanceof Error ? error.message : 'Check that command.'); return false; }
   }
   function focus(id: string) { setUnitsFor(undefined); setEditing(editing === id && draft.lines.find(line => line.id === id)?.food ? undefined : id); setFilter(undefined); setMore(false); setAdding(false); }

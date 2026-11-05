@@ -3,7 +3,7 @@ import { Change, put, StorageAdapter } from '../storage/contract';
 import { D, dayKey, Draft, draftSchema, duplicateRecipe, emptyDraft, Food, foodSchema, foodNutrition, IdFactory, lineIngredient, LogEntry, logSchema, Meal, Recipe, recipePortion, recipeSchema, recipeTotal, snapshotNutrition, structuredCopy, validateFood, nutrients, profileSchema, recipeDraftSchema, Unit, PreparedBatch, preparedBatchSchema } from './model';
 import { assertBatchCapacity, validateBatch, portionFits } from './portions';
 import { FoodIndex, normalize } from './search';
-import { emptyPreferences, liveTextIsCurrent, quickEntrySchema, QuickEntryPreferences } from './quickEntry';
+import { emptyPreferences, liveTextIsCurrent, quickEntrySchema, QuickEntryPreferences, VoiceDraft, voiceDraftSchema } from './quickEntry';
 import { TargetChange, targetChangeSchema, TargetValues, targetValuesSchema } from './targets';
 import { sameBarcode } from './barcode';
 import { makeRepeatReview, repeatReviewSchema, reviewRepeatedMeal } from './repeatMeal';
@@ -140,9 +140,32 @@ export class Repository {
       await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
     });
   }
-  saveDraft(input: Draft) {
+  saveVoiceDraft(input: VoiceDraft) {
+    const draft = voiceDraftSchema.parse(structuredCopy(input));
+    return this.serialized(async () => {
+      // A late interim-save must never resurrect a command already committed.
+      if (this.quickEntry.lastVoiceCommand === draft.id) return;
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, voiceDraft: draft.text.trim() ? draft : null, voiceLocale: draft.locale });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
+    });
+  }
+  private voiceReady(id?: string) {
+    if (!id) return true;
+    if (this.quickEntry.lastVoiceCommand === id) return false;
+    if (this.quickEntry.voiceDraft?.id !== id) throw new Error('This command has changed. Review the latest text and apply it again.');
+    return true;
+  }
+  private voicePreferences(preferences: QuickEntryPreferences, id?: string): QuickEntryPreferences {
+    return id ? quickEntrySchema.parse({ ...preferences, voiceDraft: null, lastVoiceCommand: id }) : preferences;
+  }
+  saveDraft(input: Draft, voiceId?: string) {
     const draft = draftSchema.parse(structuredCopy(input));
-    return this.serialized(async () => { await this.commit([put('draft', 'active', draft)]); this.draft = draft; });
+    return this.serialized(async () => {
+      if (!this.voiceReady(voiceId)) return;
+      const preferences = this.voicePreferences(this.quickEntry, voiceId);
+      await this.commit([put('draft', 'active', draft), ...(voiceId ? [put('quickEntry', 'preferences', preferences)] : [])]);
+      this.draft = draft; if (voiceId) this.quickEntry = preferences;
+    });
   }
   addBarcodeFood(input: Food, inputDraft: Draft, amount = '100') {
     const food = validateFood(structuredCopy(input));
@@ -192,9 +215,10 @@ export class Repository {
       this.foods = foods; this.quickEntry = preferences; this.sortAndIndex();
     });
   }
-  logDraft(input: Draft, at = new Date()) {
+  logDraft(input: Draft, at = new Date(), voiceId?: string) {
     const draft = draftSchema.parse(structuredCopy(input));
     return this.serialized(async () => {
+      if (!this.voiceReady(voiceId)) return;
       if (this.preparedBatches.some(batch => batch.id === draft.id)) throw new Error('This meal was saved as a batch. Log a portion from Saved portions.');
       if (!draft.lines.length || !liveTextIsCurrent(draft)) throw new Error('Wait for every ingredient to appear and check the highlighted rows before logging.');
       if (new Set(draft.lines.map(l => l.id)).size !== draft.lines.length) throw new Error('This meal contains duplicate rows.');
@@ -203,7 +227,10 @@ export class Repository {
         return { id: line.id, batchId: draft.id, recordedAt: at.toISOString(), meal: draft.meal, snapshot, nutrition: snapshotNutrition(snapshot) };
       });
       const fresh = entries.filter(e => !this.logs.some(l => l.id === e.id));
-      if (!fresh.length) return;
+      if (!fresh.length) {
+        if (voiceId) { const preferences = this.voicePreferences(this.quickEntry, voiceId); await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences; }
+        return;
+      }
       const foodMap = new Map(this.foods.map(f => [f.id, f]));
       draft.lines.forEach(line => foodMap.set(line.food!.id, line.food!));
       const foods = [...foodMap.values()]; this.checkBarcodes(foods);
@@ -212,7 +239,7 @@ export class Repository {
       // Log is the user's confirmation of the complete review. Last correction
       // wins. A cancelled draft or failed transaction never teaches a match.
       for (const line of draft.lines) if (!line.entrySource && normalize(line.query)) matches[normalize(line.query)] = { foodId: line.food!.id, confirmedAt: at.toISOString() };
-      const preferences = quickEntrySchema.parse({ ...this.quickEntry, matches });
+      const preferences = this.voicePreferences(quickEntrySchema.parse({ ...this.quickEntry, matches }), voiceId);
       await this.commit([...draft.lines.map(l => put('food', l.food!.id, l.food)), ...fresh.map(e => put('log', e.id, e)), put('draft', 'active', nextDraft), put('undo', 'latest', ids), put('deletionUndo', 'latest', []), put('quickEntry', 'preferences', preferences)]);
       this.quickEntry = preferences;
       this.foods = foods; this.logs = [...this.logs, ...fresh]; this.draft = nextDraft; this.undo = ids; this.deletionUndo = []; this.sortAndIndex();
@@ -257,13 +284,16 @@ export class Repository {
     if (!shortcut) throw new Error('This shortcut is no longer available.');
     return structuredCopy(shortcut.entries);
   }
-  logShortcut(id: string, at = new Date()) {
+  logShortcut(id: string, at = new Date(), voiceId?: string) {
     return this.serialized(async () => {
+      if (!this.voiceReady(voiceId)) return;
       const batchId = this.id();
       const logs = this.shortcutEntries(id).map(entry => logSchema.parse({ ...entry, id: this.id(), batchId, recordedAt: at.toISOString(), corrections: undefined, nutrition: snapshotNutrition(entry.snapshot) }));
       assertBatchCapacity(this.preparedBatches, [...this.logs, ...logs]);
       const undo = logs.map(entry => entry.id);
-      await this.commit([...logs.map(entry => put('log', entry.id, entry)), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
+      const preferences = this.voicePreferences(this.quickEntry, voiceId);
+      await this.commit([...(voiceId ? [put('quickEntry', 'preferences', preferences)] : []),...logs.map(entry => put('log', entry.id, entry)), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
+      if (voiceId) this.quickEntry = preferences;
       this.logs = [...this.logs, ...logs]; this.undo = undo; this.deletionUndo = []; this.sortAndIndex();
     });
   }
@@ -430,9 +460,10 @@ export class Repository {
       this.logs = [...this.logs, ...logs]; this.quickEntry = preferences; this.undo = undo; this.deletionUndo = []; this.sortAndIndex();
     });
   }
-  repeatMeal(entryIds: string[], at = new Date()) {
+  repeatMeal(entryIds: string[], at = new Date(), voiceId?: string) {
     const ids = [...new Set(entryIds)];
     return this.serialized(async () => {
+      if (!this.voiceReady(voiceId)) return;
       if (!ids.length || ids.length > 200) throw new Error('Choose a meal with 1–200 entries.');
       const batchId = this.id();
       const logs = ids.map(id => {
@@ -443,7 +474,9 @@ export class Repository {
       });
       assertBatchCapacity(this.preparedBatches, [...this.logs, ...logs]);
       const undo = logs.map(log => log.id);
-      await this.commit([...logs.map(log => put('log', log.id, log)), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
+      const preferences = this.voicePreferences(this.quickEntry, voiceId);
+      await this.commit([...(voiceId ? [put('quickEntry', 'preferences', preferences)] : []),...logs.map(log => put('log', log.id, log)), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
+      if (voiceId) this.quickEntry = preferences;
       this.logs = [...this.logs, ...logs]; this.undo = undo; this.deletionUndo = []; this.sortAndIndex();
     });
   }
@@ -553,13 +586,18 @@ export class Repository {
       this.preparedBatches = [...this.preparedBatches, batch]; this.foods = foods; this.quickEntry = preferences; this.draft = nextDraft; this.sortAndIndex(); return batch;
     });
   }
-  logPreparedBatch(id: string, quantity = '1', unit: 'servings' | 'g' = 'servings', at = new Date(), meal?: Meal) {
+  logPreparedBatch(id: string, quantity?: string, unit?: 'servings' | 'g', at?: Date, meal?: Meal): Promise<LogEntry>;
+  logPreparedBatch(id: string, quantity: string, unit: 'servings' | 'g', at: Date, meal: Meal | undefined, voiceId: string): Promise<LogEntry | undefined>;
+  logPreparedBatch(id: string, quantity = '1', unit: 'servings' | 'g' = 'servings', at = new Date(), meal?: Meal, voiceId?: string): Promise<LogEntry | undefined> {
     return this.serialized(async () => {
+      if (!this.voiceReady(voiceId)) return;
       const batch = this.preparedBatches.find(batch => batch.id === id); if (!batch) throw new Error('This saved batch is unavailable.');
       portionFits(batch, this.logs, quantity, unit);
       const snapshot: LogEntry['snapshot'] = { kind: 'recipe', recipe: structuredCopy(batch.recipe), quantity, unit };
       const log = logSchema.parse({ id: this.id(), batchId: this.id(), preparedBatchId: id, recordedAt: at.toISOString(), meal: meal ?? batch.meal, snapshot, nutrition: snapshotNutrition(snapshot) });
-      await this.commit([put('log', log.id, log), put('undo', 'latest', [log.id]), put('deletionUndo', 'latest', [])]);
+      const preferences = this.voicePreferences(this.quickEntry, voiceId);
+      await this.commit([...(voiceId ? [put('quickEntry', 'preferences', preferences)] : []),put('log', log.id, log), put('undo', 'latest', [log.id]), put('deletionUndo', 'latest', [])]);
+      if (voiceId) this.quickEntry = preferences;
       this.logs = [...this.logs, log]; this.undo = [log.id]; this.deletionUndo = []; this.sortAndIndex(); return log;
     });
   }
@@ -613,7 +651,7 @@ export class Repository {
       const recipeDrafts = { ...backup.recipeDrafts, ...this.recipeDrafts };
       const matches = { ...backup.quickEntry?.matches };
       for (const [query, match] of Object.entries(this.quickEntry.matches)) if (options.recoverMissing || !matches[query] || matches[query].confirmedAt <= match.confirmedAt) matches[query] = match;
-      const preferences = quickEntrySchema.parse({ weightDraft: this.quickEntry.weightDraft !== undefined ? this.quickEntry.weightDraft : backup.quickEntry?.weightDraft, weightUnit: this.quickEntry.weightUnit ?? backup.quickEntry?.weightUnit, mealEdit: this.quickEntry.mealEdit ?? backup.quickEntry?.mealEdit, libraryHidden: backup.quickEntry?.libraryHidden || this.quickEntry.libraryHidden ? { ...backup.quickEntry?.libraryHidden, ...this.quickEntry.libraryHidden } : undefined, entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, labelDrafts: backup.quickEntry?.labelDrafts || this.quickEntry.labelDrafts ? { ...backup.quickEntry?.labelDrafts, ...this.quickEntry.labelDrafts } : undefined, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
+      const preferences = quickEntrySchema.parse({ voiceDraft: this.quickEntry.voiceDraft !== undefined ? this.quickEntry.voiceDraft : backup.quickEntry?.voiceDraft, voiceLocale: this.quickEntry.voiceLocale ?? backup.quickEntry?.voiceLocale, lastVoiceCommand: this.quickEntry.lastVoiceCommand ?? backup.quickEntry?.lastVoiceCommand, weightDraft: this.quickEntry.weightDraft !== undefined ? this.quickEntry.weightDraft : backup.quickEntry?.weightDraft, weightUnit: this.quickEntry.weightUnit ?? backup.quickEntry?.weightUnit, mealEdit: this.quickEntry.mealEdit ?? backup.quickEntry?.mealEdit, libraryHidden: backup.quickEntry?.libraryHidden || this.quickEntry.libraryHidden ? { ...backup.quickEntry?.libraryHidden, ...this.quickEntry.libraryHidden } : undefined, entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, labelDrafts: backup.quickEntry?.labelDrafts || this.quickEntry.labelDrafts ? { ...backup.quickEntry?.labelDrafts, ...this.quickEntry.labelDrafts } : undefined, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
       const clearingDeletion = this.isDeletionUndo || this.isCorrectionUndo;
       await this.commit([...weighIns.map(item => put('weighIn', item.id, item)), ...mealCorrections.map(item => put('mealCorrection', item.id, item)), ...shortcuts.map(item => put('mealShortcut', item.id, item)), ...dayReviews.map(item => put('dayReview', item.id, item)), ...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : []), ...(clearingDeletion ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
       if (clearingDeletion) { this.undo = []; this.deletionUndo = []; }

@@ -13,6 +13,7 @@ import { openRecoveryPort } from '../platform/recovery';
 import { LabelForm } from '../domain/nutritionLabel';
 import { MealEdit } from '../domain/mealEditor';
 import { WeightDraft } from '../domain/weight';
+import { VoiceDraft } from '../domain/quickEntry';
 
 type State = { repo: Repository; revision: number; draft: Draft; setDraft: (draft: Draft) => void;
   run: (action: () => Promise<unknown>, success?: string, syncDraft?: boolean) => Promise<boolean>;
@@ -23,6 +24,7 @@ type State = { repo: Repository; revision: number; draft: Draft; setDraft: (draf
   saveMealEditDraft: (edit: MealEdit) => Promise<void>;
   saveWeightDraft: (draft: WeightDraft | null) => Promise<void>;
   saveLabelDraft: (key: string, form: LabelForm | null) => Promise<void>;
+  saveVoiceDraft: (draft: VoiceDraft) => Promise<void>;
   restoreBackup: (json: string, recoverMissing?: boolean) => Promise<void> };
 const Context = createContext<State | null>(null);
 let boot: Promise<Repository> | undefined;
@@ -93,6 +95,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     async saveMealEditDraft(edit) { await repo.saveMealEditDraft(edit); setRevision(value => value + 1); },
     async saveWeightDraft(draft) { await repo.saveWeightDraft(draft); setRevision(value => value + 1); },
     async saveLabelDraft(key, form) { await repo.saveLabelDraft(key, form); setRevision(value => value + 1); },
+    async saveVoiceDraft(draft) { await repo.saveVoiceDraft(draft); setRevision(value => value + 1); },
     async saveRepeatAmounts(reviewId, amounts) {
       try { await repo.saveRepeatAmounts(reviewId, amounts); setRevision(value => value + 1); }
       catch (reason) { setError('Your repeat changes could not be saved. Keep the editor open and retry logging.'); throw reason; }

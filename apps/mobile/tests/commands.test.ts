@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import catalog from '../src/data/catalog.json';
 import { Draft, emptyDraft, Food, parseEntry } from '../src/domain/model';
-import { applyCommand } from '../src/domain/commands';
+import { applyCommand, applyCommandSequence } from '../src/domain/commands';
 import { emptyPreferences, reviewInput } from '../src/domain/quickEntry';
 import { FoodIndex } from '../src/domain/search';
 import { createVoiceController } from '../src/platform/voice.web';
@@ -110,8 +110,49 @@ it('delivers interim text for display and one final transcript per recognition s
   session.onresult?.({ resultIndex: 0, results: [{ isFinal: false, 0: { transcript: 'Add 200' } }] });
   session.onresult?.({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: 'Add 200g chicken' } }] });
   session.onresult?.({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: 'Add 200g chicken' } }] });
-  expect(onText.mock.calls).toEqual([['Add 200', false], ['Add 200g chicken', true]]);
+  expect(onText.mock.calls.every(([, final]) => !final)).toBe(true);
+  session.onend?.(); session.onend?.();
+  expect(onText.mock.calls.filter(([, final]) => final)).toEqual([['Add 200g chicken', true]]);
   voice.cancel(); expect(session.onresult).toBeNull(); expect(onState).toHaveBeenLastCalledWith(false);
+});
+it('aggregates final segments and corrected interim results until the browser ends', async () => {
+  scope.SpeechRecognition = TestRecognition; const voice = createVoiceController(), onText = vi.fn();
+  await voice.start('en-US', { onText, onState: vi.fn(), onError: vi.fn() });
+  const session = TestRecognition.current, result = (transcript: string, isFinal: boolean) => ({ isFinal, 0: { transcript } });
+  session.onresult?.({ resultIndex: 0, results: [result('Add 10g olive oil', true), result('and 10g chicken', false)] });
+  session.onresult?.({ resultIndex: 1, results: [result('Add 10g olive oil', true), result('and 100g chicken', true), result('then add 50g apple', true)] });
+  expect(onText.mock.calls.filter(([, final]) => final)).toEqual([]);
+  session.onend?.();
+  expect(onText).toHaveBeenLastCalledWith('Add 10g olive oil and 100g chicken then add 50g apple', true);
+});
+it('retains interim text without applying it on an incomplete end, cancellation or error', async () => {
+  scope.SpeechRecognition = TestRecognition; const voice = createVoiceController(), onText = vi.fn(), onError = vi.fn();
+  for (const end of ['stop', 'cancel', 'error'] as const) {
+    await voice.start('en-US', { onText, onState: vi.fn(), onError });
+    const session = TestRecognition.current, late = session.onresult;
+    session.onresult?.({ resultIndex: 0, results: [{ isFinal: false, 0: { transcript: 'Add 200g' } }] });
+    if (end === 'error') session.onerror?.({ error: 'network' }); else voice[end]();
+    late?.({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: 'late result' } }] });
+  }
+  expect(onText.mock.calls.filter(([, final]) => final)).toEqual([]); expect(onError).toHaveBeenCalledOnce();
+});
+it('applies a cooking sequence atomically while preserving verified selections and decimal precision', () => {
+  const initial = change('10g olive oil'); initial.lines[0].food = index.get('mvt:08.019')!;
+  const execute = (text: string) => applyCommandSequence(text, initial, index, preferences, randomUUID);
+  const result = execute('Add 200g chicken then change chicken to 250g and split into six servings. Final cooked weight 1.001001 kg');
+  expect(result.draft.lines.map(line => [line.query, line.quantityText])).toEqual([['olive oil', '10'], ['chicken', '250']]);
+  expect(result.draft.lines[0].food).toEqual(initial.lines[0].food);
+  expect(result.draft.splitPlan).toMatchObject({ servingsText: '6', cookedWeightText: '1001.001' });
+  expect(result.draft.lines[1].food).toBeNull(); expect(initial.lines).toHaveLength(1);
+  expect(() => execute('Add 200g chicken then remove salmon')).toThrow('not in this meal'); expect(initial.lines).toHaveLength(1);
+  expect(() => execute('Log it then add 20g chicken')).toThrow('last command');
+  expect(() => execute('Add 200g chicken then repeat my last meal')).toThrow('Nothing changed');
+  expect(execute('Change olive oil to 15g then log it').command).toEqual({ kind: 'log' });
+});
+it('supports a named conversational recipe and leaves food conjunctions intact', () => {
+  const result = applyCommandSequence("I'm making chicken pasta. Six servings. Add 100g macaroni and cheese and 10g olive oil", emptyDraft(randomUUID), index, preferences, randomUUID);
+  expect(result.draft.recipeName).toBe('chicken pasta'); expect(result.draft.splitPlan?.servingsText).toBe('6');
+  expect(result.draft.lines.map(line => line.query)).toEqual(['macaroni and cheese', 'olive oil']);
 });
 it('reports speech denial and unsupported browsers without fake transcripts', async () => {
   scope.SpeechRecognition = TestRecognition; const onError = vi.fn(), onText = vi.fn(); const voice = createVoiceController();

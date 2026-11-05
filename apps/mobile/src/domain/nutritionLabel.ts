@@ -12,7 +12,9 @@ export const labelCandidateSchema = z.object({ engine: z.enum(['platform', 'tess
 export type LabelCandidate = z.infer<typeof labelCandidateSchema>;
 export const labelFormSchema = z.object({ id: z.string().max(200), name: z.string().max(300), barcode: z.string().max(30), basis: z.enum(['g', 'ml']),
   values: z.object({ kcal: z.string().max(100), protein: z.string().max(100), carbohydrate: z.string().max(100), fat: z.string().max(100), fiber: z.string().max(100) }),
-  amount: z.string().max(100), scan: labelCandidateSchema.optional(), column: z.number().int().min(0).max(7).optional() });
+  amount: z.string().max(100), scan: labelCandidateSchema.optional(), column: z.number().int().min(0).max(7).optional(),
+  edited: z.array(z.enum(['kcal', 'protein', 'carbohydrate', 'fat', 'fiber'])).max(5).optional(),
+  rescan: labelCandidateSchema.optional() });
 export type LabelForm = z.infer<typeof labelFormSchema>;
 const fold = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/æ/g, 'ae').replace(/ø/g, 'o').replace(/\b(?:grams?|grammes?)\b/g, 'g').replace(/\bmilligrams?\b/g, 'mg').replace(/\bmillilit(?:er|re)s?\b/g, 'ml').replace(/\b(?:kilocalories?|kilokalorier)\b/g, 'kcal').replace(/\bkilojoules?\b/g, 'kj');
 const labels: [typeof nutrients[number], RegExp][] = [ ['kcal', /^(?:energy|energi)\b/i], ['protein', /^(?:protein(?:er)?)\b/i], ['carbohydrate', /^(?:carbohydrates?|karbohydrat(?:er)?|carbs)\b/i], ['fat', /^(?:total\s+)?(?:fat|fett)\b/i], ['fiber', /^(?:dietary\s+)?(?:fibre|fiber|kostfiber)\b/i] ];
@@ -199,7 +201,23 @@ export function upgradeLabelForm(form: LabelForm): LabelForm {
 }
 export function applyLabelColumn(form: LabelForm, candidate: LabelCandidate, column: number): LabelForm {
   const selected = candidate.columns[column]; if (!selected) throw new Error('Choose a label column.');
-  return { ...form, basis: selected.unit, amount: form.basis === selected.unit ? form.amount : '', values: Object.fromEntries(nutrients.map(key => [key, selected.nutrition[key] ?? ''])) as LabelForm['values'], scan: candidate, column };
+  return { ...form, basis: selected.unit, amount: form.basis === selected.unit ? form.amount : '', values: Object.fromEntries(nutrients.map(key => [key, selected.nutrition[key] ?? ''])) as LabelForm['values'], scan: candidate, column, edited: [], rescan: undefined };
+}
+// A second photo is evidence to review, never permission to erase corrections.
+export function receiveLabelScan(form: LabelForm, candidate: LabelCandidate): LabelForm {
+  if (form.scan || nutrients.some(key => form.values[key] !== '') || form.edited?.length) return { ...form, rescan: candidate };
+  const next = { ...form, scan: candidate, column: undefined };
+  return candidate.columns.length === 1 && !candidate.columns[0].prepared ? applyLabelColumn(next, candidate, 0) : next;
+}
+export function canMergeLabelColumn(form: LabelForm, candidate: LabelCandidate, column: number): boolean {
+  const selected = candidate.columns[column], previous = form.scan && form.column !== undefined ? form.scan.columns[form.column] : undefined;
+  return !!selected && selected.unit === form.basis && selected.prepared === (previous?.prepared ?? false);
+}
+export function mergeLabelColumn(form: LabelForm, candidate: LabelCandidate, column: number): LabelForm {
+  if (!canMergeLabelColumn(form, candidate, column)) throw new Error('Different units or preparation. Review and replace the values explicitly.');
+  const next = applyLabelColumn(form, candidate, column);
+  return { ...next, edited: form.edited, values: Object.fromEntries(nutrients.map(key => [key,
+    form.values[key] !== '' || form.edited?.includes(key) ? form.values[key] : next.values[key]])) as LabelForm['values'] };
 }
 export function reviewedLabelFood(form: LabelForm, existing?: Food): Food {
   const column = form.scan && form.column !== undefined ? form.scan.columns[form.column] : undefined;

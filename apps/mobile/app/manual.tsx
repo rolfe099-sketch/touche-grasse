@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { foodNutrition, nutrients, parseAmount } from '../src/domain/model';
 import { useApp } from '../src/state/AppContext';
 import { Button, Field, Screen, styles, TextButton } from '../src/ui/components';
-import { applyLabelColumn, LabelCandidate, LabelForm, reviewedLabelFood, upgradeLabelForm } from '../src/domain/nutritionLabel';
+import { applyLabelColumn, canMergeLabelColumn, mergeLabelColumn, receiveLabelScan, LabelCandidate, LabelForm, reviewedLabelFood, upgradeLabelForm } from '../src/domain/nutritionLabel';
 import { LabelPhotoInput } from '../src/ui/LabelPhotoInput';
 import { colors } from '../src/ui/theme';
 export default function Manual() {
@@ -14,19 +14,18 @@ export default function Manual() {
   const key = existing ? `edit:${existing.id}:${params.line ?? ''}` : `new:${params.barcode ?? ''}`;
   const [form, setForm] = useState<LabelForm>(() => app.repo.quickEntry.labelDrafts?.[key] ?? { id: existing?.id ?? app.repo.id(), name: existing?.name ?? '', barcode: existing?.barcode ?? params.barcode ?? '', basis: existing?.referenceUnit ?? 'g', amount: '100', values: Object.fromEntries(nutrients.map(key => [key, existing?.nutrition[key] ?? ''])) as LabelForm['values'] });
   const [scanning, setScanning] = useState(false), [expanded, setExpanded] = useState(false), [draftError, setDraftError] = useState('');
-  const saving = useRef(false), lastSaved = useRef(JSON.stringify(form));
+  const saving = useRef(false), lastSaved = useRef(JSON.stringify(form)), requested = useRef(JSON.stringify(form));
+  const [retry, setRetry] = useState(0);
   useEffect(() => { const upgraded = upgradeLabelForm(form); if (upgraded !== form) setForm(upgraded); }, [form]);
   useEffect(() => {
-    const serialized = JSON.stringify(form); if (saving.current || serialized === lastSaved.current) return;
-    lastSaved.current = serialized;
-    void app.saveLabelDraft(key, form).then(() => setDraftError('')).catch(() => setDraftError('This label draft could not be saved. Keep it open and retry.'));
-  }, [form, key, app]);
+    const serialized = JSON.stringify(form); if (saving.current || serialized === lastSaved.current || serialized === requested.current) return;
+    requested.current = serialized;
+    void app.saveLabelDraft(key, form).then(() => { lastSaved.current = serialized; if (requested.current === serialized) setDraftError(''); }).catch(() => { if (requested.current === serialized) setDraftError('This label draft could not be saved. Keep it open and retry.'); });
+  }, [form, key, app, retry]);
   function read(candidate: LabelCandidate) {
-    setForm(current => {
-      const next = { ...current, scan: candidate, column: undefined, values: { kcal: '', protein: '', carbohydrate: '', fat: '', fiber: '' } };
-      return candidate.columns.length === 1 && !candidate.columns[0].prepared ? applyLabelColumn(next, candidate, 0) : next;
-    });
+    setForm(current => receiveLabelScan(current, candidate));
   }
+  function editValue(key: typeof nutrients[number], value: string) { setForm(current => ({ ...current, values: { ...current.values, [key]: value }, edited: [...new Set([...(current.edited ?? []), key])] })); }
   const selected = form.scan && form.column !== undefined ? form.scan.columns[form.column] : undefined;
   let canSave = false, validation = '';
   if (form.name.trim() && (!form.scan || selected)) {
@@ -45,26 +44,35 @@ export default function Manual() {
     if (ok) router.dismissTo(existing && !params.line ? '/recipes' : '/entry');
   }
   return <Screen title={existing ? 'Edit label' : 'Add a food'} eyebrow="Label values" back>
-    <LabelPhotoInput onRead={read} onBusy={setScanning} disabled={app.busy} hasReview={!!form.scan} captureIntent={params.capture} onCaptureConsumed={() => router.setParams({ capture: undefined })} />
+    <LabelPhotoInput onRead={read} onBusy={setScanning} disabled={app.busy} hasReview={!!form.scan || !!form.rescan} captureIntent={params.capture} onCaptureConsumed={() => router.setParams({ capture: undefined })} />
+    {form.rescan && <View testID="label-rescan-review" style={{ gap: 5, marginBottom: 12 }}>
+      <Text style={{ fontSize: 14, fontWeight: '600' }}>New photo · your values are kept</Text>
+      {!form.rescan.columns.length && <Text style={{ color: colors.secondary, fontSize: 12 }}>No reference column read. Try a closer photo or keep your current values.</Text>}
+      {form.rescan.columns.map((column, index) => {
+        const merge = canMergeLabelColumn(form, form.rescan!, index);
+        return <View key={index} style={{ gap: 3 }}><Text style={{ color: colors.secondary, fontSize: 12 }}>{column.title}{merge ? ' · fills blanks; keeps corrections' : ' · different units or preparation; replaces all values'}</Text><Button compact label={merge ? 'Use photo · keep corrections' : `Replace values: ${column.title}`} accessibilityLabel={`${merge ? 'Merge' : 'Replace with'} new label column ${index + 1}`} disabled={app.busy || scanning} onPress={() => setForm(merge ? mergeLabelColumn(form, form.rescan!, index) : applyLabelColumn(form, form.rescan!, index))} /></View>;
+      })}
+      <TextButton label="Keep current values" disabled={app.busy || scanning} onPress={() => setForm({ ...form, rescan: undefined })} />
+    </View>}
     {form.scan && <View testID="label-scan-review" style={{ gap: 5, marginBottom: 10 }}>
       <Text style={{ fontSize: 14, fontWeight: '600' }}>Check the package</Text>
       {!form.scan.columns.length && <Text style={{ fontSize: 13, color: colors.secondary }}>{form.scan.notice ?? 'Reference amount not read. Enter the label values manually or try a closer photo.'}</Text>}
       {form.scan.columns.length > 1 && <Text style={{ fontSize: 13, color: colors.secondary }}>Choose one column from the label.</Text>}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>{form.scan.columns.map((column, index) => <Button key={index} compact label={column.title} accessibilityLabel={`Use label column ${index + 1}: ${column.title}`} selected={form.column === index} disabled={app.busy || scanning} onPress={() => setForm(applyLabelColumn(form, form.scan!, index))} />)}</View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>{form.scan.columns.map((column, index) => <Button key={index} compact label={column.title} accessibilityLabel={`Use label column ${index + 1}: ${column.title}`} selected={form.column === index} disabled={app.busy || scanning} onPress={() => { if (form.column === index) return; setForm(form.column !== undefined || nutrients.some(key => form.values[key] !== '') ? { ...form, rescan: { ...form.scan!, columns: [column] } } : applyLabelColumn(form, form.scan!, index)); }} />)}</View>
       {selected && selected.amount !== '100' && <Text style={{ fontSize: 12, color: colors.secondary }}>Normalized from {selected.amount} {selected.unit} to 100 {selected.unit}. Check the measured serving amount.</Text>}
       {selected?.evidence.kcal && /kj/i.test(selected.evidence.kcal) && !/kcal/i.test(selected.evidence.kcal) && <Text style={{ fontSize: 12, color: colors.secondary }}>Energy converted from kJ using 4.184 kJ per kcal.</Text>}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><TextButton label={expanded ? 'Hide recognized text' : 'Recognized text'} onPress={() => setExpanded(!expanded)} /><TextButton label="Enter manually" onPress={() => setForm({ ...form, scan: undefined, column: undefined })} /></View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><TextButton label={expanded ? 'Hide recognized text' : 'Recognized text'} onPress={() => setExpanded(!expanded)} /><TextButton label="Enter manually" onPress={() => setForm({ ...form, scan: undefined, column: undefined, rescan: undefined })} /></View>
       {expanded && <Text testID="label-recognized-text" selectable style={{ fontSize: 12, color: colors.secondary }}>{form.scan.text}</Text>}
     </View>}
     <Field compact label="Food name" value={form.name} onChangeText={name => setForm({ ...form, name })} placeholder="Name on the package" maxLength={300} />
     <Field compact label="Barcode (optional)" value={form.barcode} onChangeText={barcode => setForm({ ...form, barcode })} keyboardType="number-pad" maxLength={30} editable={existing?.provenance.source !== 'openFoodFacts'} />
     <View style={{ flexDirection: 'row', gap: 8, marginVertical: 8 }}><Button compact label="Per 100 g" selected={form.basis === 'g'} disabled={!!form.scan} onPress={() => setForm({ ...form, basis: 'g', amount: form.basis === 'g' ? form.amount : '' })} /><Button compact label="Per 100 ml" selected={form.basis === 'ml'} disabled={!!form.scan} onPress={() => setForm({ ...form, basis: 'ml', amount: form.basis === 'ml' ? form.amount : '' })} /></View>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>{nutrients.map((key, index) => <View key={key} style={{ width: '48%' }}><Field compact label={['Energy · kcal', 'Protein · g', 'Carbs · g', 'Fat · g', 'Fiber · g'][index]} value={form.values[key]} onChangeText={value => setForm({ ...form, values: { ...form.values, [key]: value } })} keyboardType="decimal-pad" selectTextOnFocus maxLength={100} placeholder={selected?.suggestions?.[key] ? "Confirm unit" : "Unknown"} />{selected?.issues[key] && !form.values[key] && <Text style={{ fontSize: 11, color: colors.error, marginBottom: 4 }}>{selected.issues[key]}</Text>}{selected?.issues[key] && !form.values[key] && selected.evidence[key] && <Text selectable style={{ fontSize: 11, color: colors.secondary, marginBottom: 6 }}>Read: {selected.evidence[key]}</Text>}{selected?.suggestions?.[key] && !form.values[key] && <TextButton label={selected.amount === "100" ? `Confirm ${selected.suggestions[key]} g` : "Confirm grams"} accessibilityLabel={`Confirm label ${key} in grams`} onPress={() => setForm({ ...form, values: { ...form.values, [key]: selected.suggestions![key] } })} />}</View>)}{!existing && <View style={{ width: '48%' }}><Field compact label={`Amount to add · ${form.basis}`} value={form.amount} onChangeText={amount => setForm({ ...form, amount })} keyboardType="decimal-pad" selectTextOnFocus maxLength={100} /></View>}</View>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>{nutrients.map((key, index) => <View key={key} style={{ width: '48%' }}><Field compact label={['Energy · kcal', 'Protein · g', 'Carbs · g', 'Fat · g', 'Fiber · g'][index]} value={form.values[key]} onChangeText={value => editValue(key, value)} keyboardType="decimal-pad" selectTextOnFocus maxLength={100} placeholder={selected?.suggestions?.[key] ? "Confirm unit" : "Unknown"} />{selected?.nutrition[key] != null && form.values[key] !== selected.nutrition[key] && <TextButton label={`Use photo: ${selected.nutrition[key]} ${key === "kcal" ? "kcal" : "g"}`} accessibilityLabel={`Use new reading for ${key}`} disabled={app.busy || scanning} onPress={() => editValue(key, selected.nutrition[key]!)} />}{selected?.issues[key] && !form.values[key] && <Text style={{ fontSize: 11, color: colors.error, marginBottom: 4 }}>{selected.issues[key]}</Text>}{selected?.issues[key] && !form.values[key] && selected.evidence[key] && <Text selectable style={{ fontSize: 11, color: colors.secondary, marginBottom: 6 }}>Read: {selected.evidence[key]}</Text>}{selected?.suggestions?.[key] && !form.values[key] && <TextButton label={selected.amount === "100" ? `Confirm ${selected.suggestions[key]} g` : "Confirm grams"} accessibilityLabel={`Confirm label ${key} in grams`} onPress={() => editValue(key, selected.suggestions![key])} />}</View>)}{!existing && <View style={{ width: '48%' }}><Field compact label={`Amount to add · ${form.basis}`} value={form.amount} onChangeText={amount => setForm({ ...form, amount })} keyboardType="decimal-pad" selectTextOnFocus maxLength={100} /></View>}</View>
     <Text style={[styles.subtitle, { marginBottom: 10, fontSize: 12 }]}>Review every value against the label. Blank means unknown; 0 means the label states zero.</Text>
     {!!validation && <Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 12, marginBottom: 6 }}>{validation}</Text>}
-    {!!draftError && <Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 12 }}>{draftError}</Text>}
+    {!!draftError && <View><Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 12 }}>{draftError}</Text><TextButton label="Retry saving label draft" onPress={() => { requested.current = lastSaved.current; setRetry(value => value + 1); }} /></View>}
     {existing && <Text style={[styles.subtitle, { marginBottom: 10, fontSize: 12 }]}>Updates future additions{params.line ? ' and this ingredient' : ''}. Previously logged food keeps its saved values.</Text>}
-    <Button label={existing ? 'Save label' : 'Confirm and add'} primary onPress={() => void save()} disabled={app.busy || scanning || !canSave} />
+    <Button label={existing ? 'Save label' : 'Confirm and add'} primary onPress={() => void save()} disabled={app.busy || scanning || !!form.rescan || !canSave} />
     <TextButton label="Discard label draft" disabled={app.busy || scanning} onPress={() => { saving.current = true; void app.run(() => app.repo.saveLabelDraft(key, null), 'Label draft discarded').then(ok => { if (ok) router.dismissTo(existing && !params.line ? '/recipes' : '/entry'); else saving.current = false; }); }} />
   </Screen>;
 }

@@ -33,6 +33,58 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  it('retains interrupted commands, rescan evidence and corrections through reopening and backup restore', async () => {
+    const storage = await adapter(), repo = await setup(storage);
+    const voice = { id: randomUUID(), text: 'Add 200g chicken then split into six servings', locale: 'nb-NO' as const };
+    await repo.saveVoiceDraft(voice);
+    const scan = parseNutritionLabel({ engine: 'platform', text: 'Per 100 g\nEnergy 400 kcal\nFat 20 g', blocks: [] });
+    const form = applyLabelColumn({ id: 'rescan-food', name: 'Retained food', barcode: '', basis: 'g', amount: '15', values: { kcal: '', protein: '', carbohydrate: '', fat: '', fiber: '' } }, scan, 0);
+    form.rescan = { ...scan, scannedAt: new Date().toISOString() }; form.values.fat = '23'; form.edited = ['fat'];
+    await repo.saveLabelDraft('new:', form);
+    const reopened = await setup(storage); expect(reopened.quickEntry.voiceDraft).toEqual(voice); expect(reopened.quickEntry.voiceLocale).toBe('nb-NO');
+    expect(reopened.quickEntry.labelDrafts?.['new:']).toEqual(form); expect(reopened.logs).toEqual([]);
+    const restored = await setup(await adapter()); await restored.restoreJSON(await reopened.exportJSON());
+    expect(restored.quickEntry.voiceDraft).toEqual(voice); expect(restored.quickEntry.labelDrafts?.['new:']).toEqual(form);
+    await restored.close(); await reopened.close();
+  });
+  it('acknowledges commands in the food transaction, retries failures and ignores duplicate or stale results', async () => {
+    const storage = await adapter(); let fail = false;
+    const wrapper: StorageAdapter = { ...storage, load: () => storage.load(), close: () => storage.close(), commit: (changes, revision) => {
+      if (fail) { fail = false; return Promise.reject(new Error('simulated write failure')); }
+      return storage.commit(changes, revision);
+    } };
+    const repo = await setup(wrapper), voice = { id: randomUUID(), text: 'Add 10g olive oil', locale: 'en-US' as const }, draft = draftFor();
+    await repo.saveVoiceDraft(voice); fail = true;
+    await expect(repo.saveDraft(draft, voice.id)).rejects.toThrow('simulated write failure');
+    expect(repo.quickEntry.voiceDraft).toEqual(voice); expect(repo.draft.lines).toEqual([]);
+    await repo.saveDraft(draft, voice.id); expect(repo.quickEntry.voiceDraft).toBeNull();
+    await repo.saveVoiceDraft(voice); expect(repo.quickEntry.voiceDraft).toBeNull();
+    await repo.saveDraft(draftFor(), voice.id); expect(repo.draft).toEqual(draft);
+    const log = { ...voice, id: randomUUID(), text: 'Log it' }; await repo.saveVoiceDraft(log);
+    fail = true; await expect(repo.logDraft(draft, new Date(), log.id)).rejects.toThrow('simulated write failure');
+    expect(repo.logs).toEqual([]); expect(repo.quickEntry.voiceDraft).toEqual(log);
+    await repo.logDraft(draft, new Date(), log.id); await repo.logDraft(draft, new Date(), log.id);
+    expect(repo.logs).toHaveLength(1); expect(repo.quickEntry.voiceDraft).toBeNull();
+    const reopened = await setup(wrapper); expect(reopened.quickEntry.voiceDraft).toBeNull(); expect(reopened.logs).toHaveLength(1);
+    await expect(reopened.repeatMeal([reopened.logs[0].id], new Date(), randomUUID())).rejects.toThrow('command has changed');
+    await reopened.close();
+  });
+  it('repeats shortcuts, previous meals and finite portions exactly once per confirmed command', async () => {
+    const storage = await adapter(), repo = await setup(storage), draft = draftFor(); await repo.logDraft(draft);
+    const original = repo.logs[0], shortcut = await repo.saveShortcut('Oil shortcut', [original]);
+    for (const kind of ['repeat', 'shortcut'] as const) {
+      const voice = { id: randomUUID(), text: kind, locale: 'en-US' as const }; await repo.saveVoiceDraft(voice);
+      const action = () => kind === 'repeat' ? repo.repeatMeal([original.id], new Date(), voice.id) : repo.logShortcut(shortcut.id, new Date(), voice.id);
+      const before = repo.logs.length; await action(); await action(); expect(repo.logs).toHaveLength(before + 1); expect(repo.quickEntry.voiceDraft).toBeNull();
+    }
+    const batch = await repo.createBatchFromDraft(draftFor(), 'Six portions', '6', '60');
+    const voice = { id: randomUUID(), text: 'Log one serving', locale: 'en-US' as const }; await repo.saveVoiceDraft(voice);
+    const before = repo.logs.length;
+    await repo.logPreparedBatch(batch.id, '1', 'servings', new Date(), undefined, voice.id);
+    await repo.logPreparedBatch(batch.id, '1', 'servings', new Date(), undefined, voice.id);
+    expect(repo.logs).toHaveLength(before + 1); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('5');
+    await repo.undoLast(); expect(repo.logs).toHaveLength(before); await repo.close();
+  });
   it('retains audited meal corrections, editor drafts, weight history and correction Undo in the real adapter', async () => {
     const storage = await adapter(), repo = await setup(storage); await repo.logDraft(draftFor()); const original = structuredClone(repo.logs);
     await repo.startMealEdit(repo.logs.map(entry => entry.id)); const edit = structuredClone(repo.quickEntry.mealEdit!); edit.rows[0].amount = '15'; await repo.saveMealEditDraft(edit);
