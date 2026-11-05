@@ -13,14 +13,24 @@ import { LoggingDestination } from './LoggingDestination';
 import { calendarKey, loggingDayLabel } from '../domain/calendarDay';
 
 export function RepeatMealReview({ onLogged, requestedDate }: { onLogged?: (date?: string) => void; requestedDate?: string }) {
-  const { repo } = useApp(), review = repo.quickEntry.repeatReview;
-  const [focused, setFocused] = useState(false);
+  const app = useApp(), { repo } = app, review = repo.quickEntry.repeatReview;
+  const reviewId = review?.id;
+  const [ready, setReady] = useState<{ id: string; attempt: number }>(), [error, setError] = useState(''), [attempt, setAttempt] = useState(0);
+  // Finish legacy-date initialization before exposing editable inputs. A write
+  // after the first frame can disable a just-focused native/WebKit input.
   useFocusEffect(useCallback(() => {
     let active = true;
-    void repo.waitForWrites().then(() => { if (active) setFocused(true); });
-    return () => { active = false; setFocused(false); };
-  }, [repo]));
-  return review && focused ? <RepeatEditor key={review.id} onLogged={onLogged} requestedDate={requestedDate} /> : null;
+    void (async () => {
+      await repo.waitForWrites();
+      const current = repo.quickEntry.repeatReview;
+      if (current?.id !== reviewId) return;
+      if (current && !current.loggingDate) await repo.saveRepeatDestination(current.id, { loggingDate: calendarKey(new Date()) });
+      if (active) { setError(''); setReady(current ? { id: current.id, attempt } : undefined); }
+    })().catch(() => { if (active) setError('Could not open this saved repeat. Your saved amounts are kept.'); });
+    return () => { active = false; setReady(undefined); };
+  }, [repo, reviewId, attempt]));
+  if (error && review) return <View><Text accessibilityRole="alert" style={{ color: colors.error }}>{error}</Text><TextButton label="Retry opening repeat" disabled={app.busy} onPress={() => { setError(''); setAttempt(value => value + 1); }} /><TextButton label="Cancel adjusted repeat" disabled={app.busy} onPress={() => void app.run(() => repo.cancelRepeatReview(review.id))} /></View>;
+  return review && ready?.id === review.id && ready.attempt === attempt ? <RepeatEditor key={review.id} onLogged={onLogged} requestedDate={requestedDate} /> : null;
 }
 
 function RepeatEditor({ onLogged, requestedDate }: { onLogged?: (date?: string) => void; requestedDate?: string }) {
@@ -29,10 +39,6 @@ function RepeatEditor({ onLogged, requestedDate }: { onLogged?: (date?: string) 
   const [amounts, setAmounts] = useState(review.amounts), [error, setError] = useState('');
   const [keepDate, setKeepDate] = useState(false);
   const dateConflict = !keepDate && requestedDate && requestedDate !== (review.loggingDate ?? calendarKey(new Date()));
-  const pinned = useRef(false);
-  useEffect(() => {
-    if (!review.loggingDate && !pinned.current) { pinned.current = true; void app.run(() => app.repo.saveRepeatDestination(review.id, { loggingDate: calendarKey(new Date()) })); }
-  }, [review, app]);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const progress = reviewRepeatedMeal({ ...review, amounts });
