@@ -32,4 +32,6 @@ Domain and real storage-adapter tests cover parsing, column isolation, exact nor
 
 Dense, curved, reflective, blurry or unusually arranged tables can require a closer photo, a crop made in the phone's photo editor, or manual correction. Paragraph-only extraction is handled conservatively. Barcode detection is still a separate existing camera action; label OCR does not infer a barcode or product name from a table. The app does not track salt, sodium or additional micronutrients in this iteration.
 
+The Linux WebKit synthetic-image run also gives the fat row insufficient confidence, unlike the Windows run. Its test requires an explicit correction, retains the original unknown scan value and records the corrected value as user-confirmed. The confidence threshold remains unchanged; these fixtures do not establish equivalent OCR quality across platforms or physical-camera acceptance.
+
 Primary references: [native module](https://github.com/ManojKanth/expo-ocr-kit), [Apple Vision](https://developer.apple.com/documentation/vision/recognizing-text-in-images), [Tesseract local installation](https://github.com/naptha/tesseract.js/blob/master/docs/local-installation.md), [language data](https://github.com/naptha/tessdata).

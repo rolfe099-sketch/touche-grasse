@@ -27,6 +27,19 @@ async function exportJSON(page: Page) {
   await page.goto('/settings');
   const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export backup', exact: true }).click(); return JSON.parse(readFileSync((await (await download).path())!, 'utf8'));
 }
+async function reviewFat(page: Page) {
+  const field = page.getByRole('textbox', { name: 'Fat · g', exact: true });
+  // Windows and Linux WebKit assign different confidence to the small unit
+  // glyph in the same synthetic table. A weak reading must require review;
+  // accepting an incorrect nonempty value would still fail this test.
+  const neededCorrection = (await field.inputValue()) === '';
+  if (neededCorrection) {
+    await expect(page.getByText(/^Read: (?:Fett|Fat)\b/)).toBeVisible();
+    await field.fill('20');
+  }
+  await expect(field).toHaveValue('20');
+  return neededCorrection;
+}
 test.beforeEach(async ({ page }) => { mkdirSync(output, { recursive: true }); await page.emulateMedia({ reducedMotion: 'reduce' }); });
 
 test('real Norwegian image OCR → editable review → exact food math → offline barcode reuse and historical preservation', async ({ page, context }) => {
@@ -41,7 +54,7 @@ test('real Norwegian image OCR → editable review → exact food math → offli
   await expect(page.getByRole('textbox', { name: 'Energy · kcal', exact: true })).toHaveValue('400');
   await expect(page.getByRole('textbox', { name: 'Protein · g', exact: true })).toHaveValue('25');
   await expect(page.getByRole('textbox', { name: 'Carbs · g', exact: true })).toHaveValue('30');
-  await expect(page.getByRole('textbox', { name: 'Fat · g', exact: true })).toHaveValue('20');
+  const correctedFat = await reviewFat(page);
   await expect(page.getByRole('textbox', { name: 'Fiber · g', exact: true })).toHaveValue('5');
   await page.getByRole('textbox', { name: 'Food name', exact: true }).fill('Reviewed test label');
   await page.getByRole('textbox', { name: 'Energy · kcal', exact: true }).fill('410'); await page.getByRole('textbox', { name: 'Amount to add · g', exact: true }).fill('15');
@@ -50,6 +63,8 @@ test('real Norwegian image OCR → editable review → exact food math → offli
   await page.getByTestId('commit-food').click(); await expect(page).toHaveURL(/\/$/); await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('151');
   const saved = await exportJSON(page), food = saved.foods.find((food: { name: string }) => food.name === 'Reviewed test label');
   expect(saved.logs).toHaveLength(2); expect(food.provenance.source).toBe('confirmedOCR'); expect(food.provenance.labelScan.originalNutrition.kcal).toBe('400'); expect(food.nutrition.kcal).toBe('410'); expect(JSON.stringify(saved)).not.toContain('data:image');
+  expect(food.nutrition.fat).toBe('20'); expect(food.provenance.labelScan.originalNutrition.fat).toBe(correctedFat ? null : '20');
+  if (correctedFat) expect(food.provenance.nutrientSources.fat).toBe('User-confirmed label value');
   await page.goto('/entry'); await page.getByRole('button', { name: 'Scan a barcode', exact: true }).click(); await context.setOffline(true);
   await page.getByRole('textbox', { name: 'Barcode', exact: true }).fill('7038010001918'); await page.getByRole('button', { name: 'Find product', exact: true }).click();
   await expect(page.getByTestId('quantity-0')).toHaveValue('100'); await expect(page.getByTestId('meal-kcal')).toContainText('410'); await page.getByTestId('commit-food').click();
@@ -69,7 +84,8 @@ test('two-column image requires an explicit basis and keeps measured serving nut
   await expect(page.getByRole('textbox', { name: 'Energy · kcal', exact: true })).toHaveValue('');
   await page.getByRole('textbox', { name: 'Food name', exact: true }).fill('Two-column label'); await expect(page.getByRole('button', { name: 'Confirm and add', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Use label column 2: Per 30 g', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Energy · kcal', exact: true })).toHaveValue('400');  await expect(page.getByRole('textbox', { name: 'Fat · g', exact: true })).toHaveValue('20');  // The actual engine misreads 7,5 g / 1,5 g in this column. Keep the weak  // readings unknown, then verify real user corrections use normalized values.  await expect(page.getByRole('textbox', { name: 'Protein · g', exact: true })).toHaveValue('');  await expect(page.getByRole('textbox', { name: 'Fiber · g', exact: true })).toHaveValue('');  await page.getByRole('textbox', { name: 'Protein · g', exact: true }).fill('25');  await page.getByRole('textbox', { name: 'Fiber · g', exact: true }).fill('5');
+  await expect(page.getByRole('textbox', { name: 'Energy · kcal', exact: true })).toHaveValue('400');  await reviewFat(page);
+  // The actual engine misreads 7,5 g / 1,5 g in this column. Keep the weak  // readings unknown, then verify real user corrections use normalized values.  await expect(page.getByRole('textbox', { name: 'Protein · g', exact: true })).toHaveValue('');  await expect(page.getByRole('textbox', { name: 'Fiber · g', exact: true })).toHaveValue('');  await page.getByRole('textbox', { name: 'Protein · g', exact: true }).fill('25');  await page.getByRole('textbox', { name: 'Fiber · g', exact: true }).fill('5');
   await page.getByRole('textbox', { name: 'Amount to add · g', exact: true }).fill('30'); await page.getByRole('button', { name: 'Confirm and add', exact: true }).click(); await expect(page.getByTestId('meal-kcal')).toContainText('120');
 });
 
