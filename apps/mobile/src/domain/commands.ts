@@ -1,16 +1,17 @@
 import { D, dayKey, Draft, IdFactory, LogEntry, Meal, parseAmount } from './model';
-import { ingredientText, spokenNumbers } from './naturalInput';
+import { commandCourtesy, commandRequest, ingredientText, spokenNumbers } from './naturalInput';
 import { editLiveLine, QuickEntryPreferences, updateLiveText } from './quickEntry';
 import { FoodIndex, normalize } from './search';
 
 export type MealCommand = { kind: 'draft'; draft: Draft; message: string } | { kind: 'log' } | { kind: 'recipe' } | { kind: 'repeat'; yesterdayMeal?: Meal } | { kind: 'shortcut'; name: string } | { kind: 'portion'; name: string; quantity: string };
 export function applyCommand(input: string, draft: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory): MealCommand {
-  const text = spokenNumbers(input).trim().replace(/[.!?]+$/, '')
+  const text = spokenNumbers(commandRequest(input)).trim().replace(/[.!?]+$/, '')
     .replace(/^(?:I'm|I am) making\s+/i, 'Start a recipe called ')
     .replace(/^jeg lager\s+/i, 'Start a recipe called ')
     .replace(/^endre (.+?) til /i, 'Change $1 to ').replace(/^fjern /i, 'Remove ')
     .replace(/^del (?:det |den )?(?:i |opp i )?/i, 'Split into ').replace(/\bporsjoner?\b/gi, 'servings');
   if (!text) throw new Error('Say or type a command first.');
+  if (/^(?:(?:please\s+)?(?:can|could|would|will)\s+(?:you|I)|please\s+(?:do\s+)?not|(?:please\s+)?(?:do\s+not|don't))\b/i.test(text)) throw new Error('Use a direct food command, such as “Add 15g olive oil”. Nothing changed.');
   if (/^(log|save) (it|this|meal|this meal)( now| today)?$/i.test(text)) return { kind: 'log' };
   if (/^(repeat|log) (my |the )?last meal$/i.test(text)) return { kind: 'repeat' };
   const yesterday = /^(?:same|repeat|log)(?: my| the)? (breakfast|lunch|dinner|snack|snacks|frokost|lunsj|middag)(?: as| from)? yesterday$/i.exec(text);
@@ -60,9 +61,9 @@ export function applyCommand(input: string, draft: Draft, index: FoodIndex, pref
 // decimal commas and food names remain the ingredient parser's responsibility.
 // Nothing is persisted until every clause has validated successfully.
 export function applyCommandSequence(input: string, original: Draft, index: FoodIndex, preferences: QuickEntryPreferences, id: IdFactory): { draft: Draft; command: MealCommand } {
-  const verb = '(?:add|change|set|remove|split|divide|save|log|repeat|start|create|make|finish|open|final\\s+(?:cooked\\s+)?weight|cooked\\s+weight|legg\\s+til|endre|fjern|del)\\b';
+  const verb = `(?:${commandCourtesy})?` + '(?:add|include|change|set|remove|split|divide|save|log|repeat|start|create|make|finish|open|final\\s+(?:cooked\\s+)?weight|cooked\\s+weight|legg\\s+til|endre|fjern|del)\\b';
   const numberedServings = '(?:(?:\\d+(?:[.,]\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\\s+(?:servings?|portions?))\\b';
-  const boundary = new RegExp('(?:\\s+(?:and\\s+)?then\\s+|\\s+(?:and|og)\\s+|[.;!?]\\s*(?:(?:then|and|og)\\s+)?)(?=(?:' + verb + '|' + numberedServings + '))', 'i');
+  const boundary = new RegExp('(?:\\s+(?:and\\s+)?then\\s+|\\s+(?:and|og)\\s+|[.;!?]\\s*(?:(?:then|and|og)\\s+)?)(?=(?:' + verb + '|' + commandCourtesy + '|' + numberedServings + '))', 'i');
   const clauses = input.trim().split(boundary).map(clause => clause.trim()).filter(Boolean);
   if (clauses.length > 30) throw new Error('Use up to 30 commands at a time.');
   let draft = original, result: MealCommand | undefined;

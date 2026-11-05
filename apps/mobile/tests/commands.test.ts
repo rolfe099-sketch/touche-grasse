@@ -54,6 +54,37 @@ it('parses natural meal phrases and number words without inventing food, amounts
   expect(parseEntry('Add chicken and olive oil', randomUUID)[0].quantityText).toBe('');
   expect(parseEntry('15,5g pesto, 10g olive oil', randomUUID)[0].quantityText).toBe('15,5');
 });
+it.each([
+  'can you add 15 grams of oil',
+  'Can you please add fifteen grams of oil?',
+  'Could you add 15 grams of oil please?',
+  'Would you please add 15g oil?',
+  'Will you add 15g oil',
+  'Please could you add 15 grams of oil?',
+  'Please add 15g oil',
+])('parses a polite request as an ingredient without silently choosing its product: %s', text => {
+  const next = change(text);
+  expect(next.lines.map(line => [line.query, line.quantityText, line.unit])).toEqual([['oil', '15', 'g']]);
+  expect(next.lines[0].food).toBeNull();
+  expect(parseEntry(text, randomUUID).map(line => [line.query, line.quantityText, line.unit])).toEqual([['oil', '15', 'g']]);
+  expect(ingredientText(ingredientText(text))).toBe(ingredientText(text));
+});
+it('supports polite additions and corrections throughout one atomic utterance', () => {
+  const result = applyCommandSequence('Could you add 10 grams of olive oil and can you add 50g apple, then would you please change apple to 75g?', emptyDraft(randomUUID), index, preferences, randomUUID);
+  expect(result.draft.lines.map(line => [line.query, line.quantityText])).toEqual([['olive oil', '10'], ['apple', '75']]);
+  expect(parseEntry('Can you add 15,5g pesto and could you add 100g macaroni and cheese?', randomUUID).map(line => [line.query, line.quantityText])).toEqual([['pesto', '15,5'], ['macaroni and cheese', '100']]);
+  expect(command('Could you split into six servings?', result.draft).kind).toBe('draft');
+  expect(command('Can you log it?', result.draft)).toEqual({ kind: 'log' });
+});
+it('does not turn information questions or negated requests into food commands or strip literal food names', () => {
+  const draft = change('10g olive oil'), before = JSON.stringify(draft);
+  for (const text of ['Can I add 15g oil?', 'Can you not add 15g oil?', 'Please can you not add 15g oil?', 'Could you tell me about 15g oil?', "Don't add 15g oil", "Please don't add 15g oil", 'Please do not add 15g oil']) expect(() => command(text, draft)).toThrow('Nothing changed');
+  expect(JSON.stringify(draft)).toBe(before);
+  expect(() => applyCommandSequence('Can you add 50g apple, then could you not add 15g oil?', draft, index, preferences, randomUUID)).toThrow('Nothing changed');
+  expect(JSON.stringify(draft)).toBe(before);
+  expect(ingredientText('100g Can You Cheese')).toBe('100g Can You Cheese');
+  expect(command('Can you start a recipe called Pretty Please?')).toMatchObject({ kind: 'draft', draft: { recipeName: 'Pretty Please' } });
+});
 it('appends conversational additions while keeping confirmed selections and unrelated quantities', () => {
   let draft = reviewInput({ kind: 'text', text: '200g chicken, 10g olive oil' }, emptyDraft(randomUUID), index, preferences, randomUUID);
   draft.lines[0].food = index.get('mvt:03.205')!;

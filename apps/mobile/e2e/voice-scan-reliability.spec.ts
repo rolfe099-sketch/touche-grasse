@@ -81,6 +81,33 @@ test('a failed food transaction retains the command and retry logs exactly once 
   await page.getByRole('button', { name: 'Undo last log', exact: true }).click(); await expect.poll(async () => (await state(page)).logs.length).toBe(0);
 });
 
+test('the reported polite speech request creates a measured ambiguous oil row and accepts polite corrections', async ({ page }) => {
+  // Inject only the recognition transcript; parsing, matching and persistence
+  // run through the real entry UI. This does not test microphone accuracy.
+  await page.addInitScript(() => {
+    class Speech {
+      onstart?: () => void; onend?: () => void; onresult?: (event: unknown) => void;
+      start() { this.onstart?.(); this.onresult?.({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: 'can you add 15 grams of oil' } }] }); this.onend?.(); }
+      stop() { this.onend?.(); } abort() { this.onend?.(); }
+    }
+    Object.assign(window, { SpeechRecognition: Speech });
+  });
+  await page.goto('/entry'); await settled(page);
+  await page.getByRole('button', { name: 'Speak a command', exact: true }).click();
+  await expect(page.getByTestId('quantity-0')).toHaveValue('15');
+  await expect(page.getByRole('button', { name: 'Change food 1', exact: true })).toHaveText('oil');
+  await expect(page.getByTestId('entry-search')).toHaveValue('oil');
+  await expect(page.getByTestId('commit-food')).toBeDisabled();
+  await expect.poll(async () => (await state(page)).draft.lines[0].query).toBe('oil');
+  expect((await state(page)).logs).toEqual([]);
+  await commands(page, 'Could you please change oil to 20 grams?');
+  await expect(page.getByTestId('quantity-0')).toHaveValue('20');
+  await expect(page.getByTestId('quantity-1')).toHaveCount(0);
+  await expect.poll(async () => (await state(page)).preferences.voiceDraft).toBeNull();
+  await page.reload(); await expect(page.getByTestId('quantity-0')).toHaveValue('20');
+  await page.screenshot({ path: path.join(output, `${test.info().project.name || 'chromium'}-polite-oil-request.png`) });
+});
+
 test('long cooking commands validate as a whole and preserve exact six-serving batch math', async ({ page }) => {
   await page.goto('/entry'); await settled(page);
   await commands(page, 'Add 10g olive oil then change olive oil to 15g then remove salmon');
