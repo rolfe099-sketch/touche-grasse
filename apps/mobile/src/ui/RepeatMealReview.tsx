@@ -1,3 +1,5 @@
+import { DestinationConflict } from './DestinationConflict';
+import { Icon } from './Icon';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { router, useFocusEffect, usePathname } from 'expo-router';
@@ -5,9 +7,9 @@ import { display, logName } from '../domain/model';
 import { repeatAvailability, reviewRepeatedMeal } from '../domain/repeatMeal';
 import { batchBalance } from '../domain/portions';
 import { useApp } from '../state/AppContext';
-import { Button, TextButton, styles } from './components';
+import { Button, TextButton } from './components';
 import { Text, TextInput } from './Text';
-import { colors } from './theme';
+import { colors, numeric } from './theme';
 import { foodLabel } from '../domain/foodLanguage';
 import { LoggingDestination } from './LoggingDestination';
 import { calendarKey, loggingDayLabel } from '../domain/calendarDay';
@@ -36,7 +38,7 @@ export function RepeatMealReview({ onLogged, requestedDate }: { onLogged?: (date
 function RepeatEditor({ onLogged, requestedDate }: { onLogged?: (date?: string) => void; requestedDate?: string }) {
   const app = useApp(), review = app.repo.quickEntry.repeatReview!;
   const pathname = usePathname();
-  const [amounts, setAmounts] = useState(review.amounts), [error, setError] = useState('');
+  const [amounts, setAmounts] = useState(review.amounts), [error, setError] = useState(''), [focusedAmount, setFocusedAmount] = useState<number>();
   const [keepDate, setKeepDate] = useState(false);
   const dateConflict = !keepDate && requestedDate && requestedDate !== (review.loggingDate ?? calendarKey(new Date()));
   const mounted = useRef(true);
@@ -48,15 +50,14 @@ function RepeatEditor({ onLogged, requestedDate }: { onLogged?: (date?: string) 
     void app.saveRepeatAmounts(review.id, next).catch(() => { if (mounted.current) setError('Could not save these amounts. Log will retry, or keep this view open.'); });
   }
   return <View testID="repeat-review" style={{ marginTop: 12, paddingVertical: 8, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text accessibilityRole="header" style={{ fontSize: 17, fontWeight: '600' }}>{review.shortcutId ? app.repo.shortcuts.find(item => item.id === review.shortcutId)?.name ?? 'Adjusted shortcut' : 'Repeat with changes'}</Text><TextButton label="Cancel" accessibilityLabel="Cancel adjusted repeat" disabled={app.busy} onPress={() => void app.run(() => app.repo.cancelRepeatReview(review.id))} /></View>
-    {dateConflict && <View testID="destination-conflict"><Text>Your adjusted meal has its own date. Use {loggingDayLabel(requestedDate)}?</Text><TextButton label={`Use ${loggingDayLabel(requestedDate)}`} disabled={app.busy} onPress={() => void app.run(() => app.repo.saveRepeatDestination(review.id, { loggingDate: requestedDate }))} /><TextButton label="Keep draft date" disabled={app.busy} onPress={() => setKeepDate(true)} /></View>}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingBottom: 4 }}><View style={{ width: 30, height: 30, borderRadius: 8, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}><Icon name="repeat" size={16} /></View><View style={{ flex: 1 }}><Text accessibilityRole="header" style={{ fontSize: 17, fontWeight: '600' }}>{review.shortcutId ? app.repo.shortcuts.find(item => item.id === review.shortcutId)?.name ?? 'Adjusted shortcut' : 'Repeat with changes'}</Text><Text style={{ color: colors.secondary, fontSize: 12 }}>{review.entries.length} {review.entries.length === 1 ? 'food' : 'foods'}</Text></View><TextButton label="Cancel" accessibilityLabel="Cancel adjusted repeat" disabled={app.busy} onPress={() => void app.run(() => app.repo.cancelRepeatReview(review.id))} /></View>
+    {dateConflict && <DestinationConflict date={review.loggingDate} meal={review.meal ?? review.entries[0].meal} requestedDate={requestedDate!} disabled={app.busy} onUse={() => void app.run(() => app.repo.saveRepeatDestination(review.id, { loggingDate: requestedDate }))} onKeep={() => setKeepDate(true)} />}
     <LoggingDestination date={review.loggingDate} meal={review.meal ?? review.entries[0].meal} disabled={app.busy || !!dateConflict} onChange={change => void app.run(() => app.repo.saveRepeatDestination(review.id, change))} />
     {progress.rows.map(({ entry, nutrition, error: rowError }, index) => { const batch = entry.preparedBatchId ? app.repo.preparedBatches.find(item => item.id === entry.preparedBatchId) : undefined; return <View key={entry.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, borderTopWidth: index ? 1 : 0, borderColor: colors.line, minHeight: 55 }}>
       <View style={{ flex: 1 }}><Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600' }}>{entry.snapshot.kind === 'food' ? foodLabel(entry.snapshot.ingredient.food) : logName(entry)}</Text><Text style={{ color: rowError ? colors.error : colors.secondary, fontSize: 12 }}>{rowError ?? `${display(nutrition!.kcal, 0)} kcal`}{batch ? ` · ${display(batchBalance(batch, app.repo.logs).servings.toFixed(), 2)} servings left` : ''}</Text></View>
-      <TextInput accessibilityLabel={`Repeat amount ${index + 1}`} testID={`repeat-amount-${index}`} value={amounts[index]} onChangeText={value => change(index, value)} editable={!app.busy} keyboardType="decimal-pad" selectTextOnFocus maxLength={100} style={[styles.input, { width: 78, minHeight: 44, fontSize: 16, textAlign: 'right', paddingVertical: 6 }]} />
-      <Text style={{ width: 52, color: colors.secondary, fontSize: 12 }}>{entry.snapshot.kind === 'food' ? entry.snapshot.ingredient.unit : entry.snapshot.unit}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', width: 120, minHeight: 46, borderWidth: 1, borderColor: focusedAmount === index ? colors.action : colors.line, borderRadius: 9, backgroundColor: colors.night }}><TextInput focusRing="container" accessibilityLabel={`Repeat amount ${index + 1}`} testID={`repeat-amount-${index}`} value={amounts[index]} onChangeText={value => change(index, value)} onFocus={() => setFocusedAmount(index)} onBlur={() => setFocusedAmount(undefined)} editable={!app.busy} keyboardType="decimal-pad" selectTextOnFocus maxLength={100} style={{ flex: 1, minWidth: 48, minHeight: 44, fontSize: 18, fontFamily: numeric, fontVariant: ['tabular-nums'], textAlign: 'right', paddingHorizontal: 8, color: colors.ink }} /><Text style={{ minWidth: 29, maxWidth: 55, paddingRight: 8, color: colors.secondary, fontSize: 12 }}>{entry.snapshot.kind === 'food' ? entry.snapshot.ingredient.unit : entry.snapshot.unit}</Text></View>
     </View>; })}
-    <View testID="repeat-totals" style={{ paddingVertical: 8, gap: 3 }}><Text style={{ fontSize: 15, fontWeight: '600' }}>{progress.valid ? 'Meal total' : 'Resolved subtotal'} · {display(progress.nutrition.kcal, 0)} kcal</Text><Text style={{ color: colors.secondary, fontSize: 12 }}>Protein {display(progress.nutrition.protein)} g · Carbs {display(progress.nutrition.carbohydrate)} g · Fat {display(progress.nutrition.fat)} g · Fiber {display(progress.nutrition.fiber)} g</Text></View>
+    <View testID="repeat-totals" style={{ paddingVertical: 13, gap: 8, borderTopWidth: 1, borderColor: colors.line, marginTop: 5 }}><View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}><Text style={{ color: colors.secondary, fontSize: 13 }}>{progress.valid ? 'Meal total' : 'Resolved subtotal'}</Text><Text style={{ fontFamily: numeric, fontVariant: ['tabular-nums'], fontSize: 24, fontWeight: '600' }}>{display(progress.nutrition.kcal, 0)} <Text style={{ fontSize: 12, color: colors.secondary }}>kcal</Text></Text></View><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 9 }}>{([['Protein', progress.nutrition.protein], ['Carbs', progress.nutrition.carbohydrate], ['Fat', progress.nutrition.fat], ['Fiber', progress.nutrition.fiber]] as const).map(([label, value]) => <View key={label} style={{ flexGrow: 1, minWidth: 65, gap: 2 }}><Text style={{ fontSize: 11, color: colors.secondary }}>{label}</Text><Text style={{ fontFamily: numeric, fontVariant: ['tabular-nums'], fontSize: 15 }}>{display(value)} <Text style={{ color: colors.secondary, fontSize: 11 }}>g</Text></Text></View>)}</View></View>
     {!!error && <Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 12, marginBottom: 6 }}>{error}</Text>}
     {!!availabilityError && <Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 12, marginBottom: 6 }}>{availabilityError}</Text>}
     {review.shortcutId && <TextButton label="Edit foods" disabled={app.busy || !progress.valid} onPress={() => void app.run(() => app.repo.editRepeatFoods(review.id)).then(ok => { if (ok && pathname !== '/entry') router.push('/entry'); })} />}

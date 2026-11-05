@@ -1,3 +1,4 @@
+import { DestinationConflict } from '../src/ui/DestinationConflict';
 import { Text, TextInput } from '../src/ui/Text';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput as NativeInput, View } from 'react-native';
@@ -16,7 +17,7 @@ import { colors, numeric } from '../src/ui/theme';
 import { SavedPortions, SplitIntoServings } from '../src/ui/Portions';
 import { mealLabel } from '../src/i18n';
 import { Icon } from '../src/ui/Icon';
-import { LoggingDestination } from '../src/ui/LoggingDestination';
+import { DestinationSummary, LoggingDestination } from '../src/ui/LoggingDestination';
 import { loggingDayLabel, loggingTime } from '../src/domain/calendarDay';
 import { extractLoggingDestination, hasMealDraft } from '../src/domain/loggingDestination';
 import { EntryMethod, VoiceEntry } from '../src/ui/VoiceEntry';
@@ -141,7 +142,7 @@ export default function Entry() {
   if (repo.quickEntry.repeatReview) return <EntryFrame><Screen keyboardInsets={false} support title="Quick Log" back><LabelDraftResume reviews={labelReviews} disabled={busy} /><RepeatMealReview onLogged={date => logged(date)} requestedDate={params.date} /></Screen></EntryFrame>;
   const splitting = draft.splitPlan;
   const footer = !!draft.lines.length && !(splitting && progress.valid) && <>
-    <Text testID="commit-destination" style={{ color: colors.secondary, fontSize: 12, marginBottom: 4 }}>{loggingDayLabel(draft.loggingDate)} · {mealLabel(draft.meal)}</Text>
+    <DestinationSummary date={draft.loggingDate} meal={draft.meal} testID="commit-destination" />
     <View testID="meal-nutrition">
     <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
       <Text style={s.small}>{progress.valid ? 'Meal total' : `Resolved subtotal · ${progress.resolved}/${draft.lines.length}`}</Text><Text testID="meal-kcal" style={{ fontSize: 20, fontFamily: numeric, fontVariant: ['tabular-nums'], fontWeight: '600' }}>{display(progress.nutrition.kcal, 0)} <Text style={s.small}>kcal</Text></Text>
@@ -153,7 +154,7 @@ export default function Entry() {
   return <EntryFrame>
     <Screen keyboardInsets={false} support title={draft.recipeName ? 'Build a recipe' : 'Quick Log'} back footer={footer} trailing={<IconButton name="type" label="Type commands" onPress={() => { Keyboard.dismiss(); setMode('text'); setCommandsOpen(!commandsOpen); }} />}>
       <LabelDraftResume reviews={labelReviews} disabled={busy} />
-      {!!requestedDay && <View testID="destination-conflict" style={{ gap: 4, paddingVertical: 6 }}><Text>Your unfinished meal is for {loggingDayLabel(draft.loggingDate)}. Use {loggingDayLabel(requestedDay)}?</Text><View style={{ flexDirection: 'row' }}><TextButton label={`Use ${loggingDayLabel(requestedDay)}`} disabled={busy} onPress={() => { setDraft({ ...draft, loggingDate: requestedDay }); setRequestedDay(undefined); }} /><TextButton label="Keep draft date" disabled={busy} onPress={() => setRequestedDay(undefined)} /></View></View>}
+      {!!requestedDay && <DestinationConflict date={draft.loggingDate} meal={draft.meal} requestedDate={requestedDay} disabled={busy} onUse={() => { setDraft({ ...draft, loggingDate: requestedDay }); setRequestedDay(undefined); }} onKeep={() => setRequestedDay(undefined)} />}
       {!!destinationError && <View><Text accessibilityRole="alert" style={{ color: colors.error }}>{destinationError}</Text><TextButton label="Use Today" onPress={() => { setDraft({ ...draft, loggingDate: dayKey(new Date()) }); setDestinationError(''); }} /></View>}
       <VoiceEntry onCommand={command} disabled={busy || destinationBlocked} mode={mode} onMode={selectMode} onReview={() => setMode('text')} onType={focusSource} commandsOpen={commandsOpen} onCommands={setCommandsOpen} autoStart={params.mode === 'voice'}>
         <TextInput ref={source} autoFocus={initialMode === 'text' && !draft.lines.length && !labelReviews.length} onFocus={() => setSourceFocused(true)} onBlur={() => setSourceFocused(false)} accessibilityLabel="Meal" testID="quick-text" placeholder="200g chicken, 150g pasta…" placeholderTextColor={colors.secondary} style={{ paddingHorizontal: 13, paddingVertical: 10, minHeight: 50, maxHeight: sourceFocused ? 115 : 64, fontSize: 17, lineHeight: 22 }} value={draft.text} multiline maxLength={10000} onChangeText={typeMeal} editable={!busy} />
