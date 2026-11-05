@@ -14,7 +14,20 @@ export function inspectRecoveryJSON(json: string) {
   if (json.length > 50000000 || byteLength(json) > 50000000) throw new Error('This recovery copy exceeds 50 MB.');
   let value; try { value = JSON.parse(json); } catch { throw new Error('This recovery copy is unreadable. Other copies are kept.'); }
   if (value?.format !== 'touche-grasse' || value.version !== 2 || !Array.isArray(value.logs) || !Array.isArray(value.foods) || !Array.isArray(value.recipes) || !value.draft) throw new Error('This is not a Touche Grasse recovery copy.');
-  return { weighIns: (value.weighIns?.filter((item: { deletedAt?: string }) => !item.deletedAt).length ?? 0) as number, mealCorrections: (value.mealCorrections?.length ?? 0) as number, logs: value.logs.length as number, recipes: value.recipes.length as number, foods: value.foods.length as number, shortcuts: (value.shortcuts?.filter((item: { deletedAt?: string }) => !item.deletedAt).length ?? 0) as number, reviewedDays: (value.dayReviews?.length ?? 0) as number, portions: (value.preparedBatches?.length ?? 0) as number, meaningful: !!(value.logs.length || value.foods.length || value.recipes.length || value.draft.text || value.draft.lines?.length || value.draft.recipeName || value.draft.splitPlan || value.quickEntry?.voiceDraft || value.quickEntry?.weightDraft || value.quickEntry?.mealEdit || value.quickEntry?.repeatReview || Object.keys(value.quickEntry?.labelDrafts ?? {}).length || Object.keys(value.quickEntry?.libraryHidden ?? {}).length || value.weighIns?.length || value.mealCorrections?.length || value.shortcuts?.length || value.dayReviews?.length || value.targets?.length || value.preparedBatches?.length || Object.keys(value.recipeDrafts ?? {}).length) };
+  const record = (input: unknown) => input !== null && typeof input === 'object' && !Array.isArray(input);
+  for (const key of ['weighIns', 'mealCorrections', 'shortcuts', 'dayReviews', 'preparedBatches', 'targets']) if (value[key] !== undefined && !Array.isArray(value[key])) throw new Error('This backup has an invalid record list. Choose another file.');
+  for (const key of ['draft', 'quickEntry', 'recipeDrafts']) if (value[key] !== undefined && !record(value[key])) throw new Error('This backup has invalid draft data. Choose another file.');
+  if (value.quickEntry?.labelDrafts !== undefined && !record(value.quickEntry.labelDrafts)) throw new Error('This backup has invalid label drafts. Choose another file.');
+  if ((value.weighIns ?? []).some((item: unknown) => !record(item)) || (value.shortcuts ?? []).some((item: unknown) => !record(item))) throw new Error('This backup has an invalid record list. Choose another file.');
+  const drafts = {
+    meal: !!(value.draft.text || value.draft.lines?.length || value.draft.recipeName || value.draft.splitPlan),
+    recipes: Object.keys(value.recipeDrafts ?? {}).length,
+    labels: Object.keys(value.quickEntry?.labelDrafts ?? {}).length,
+    command: !!value.quickEntry?.voiceDraft?.text,
+    weight: !!value.quickEntry?.weightDraft,
+    adjustment: !!(value.quickEntry?.mealEdit || value.quickEntry?.repeatReview),
+  };
+  return { weighIns: (value.weighIns?.filter((item: { deletedAt?: string }) => !item.deletedAt).length ?? 0) as number, mealCorrections: (value.mealCorrections?.length ?? 0) as number, logs: value.logs.length as number, recipes: value.recipes.length as number, foods: value.foods.length as number, shortcuts: (value.shortcuts?.filter((item: { deletedAt?: string }) => !item.deletedAt).length ?? 0) as number, reviewedDays: (value.dayReviews?.length ?? 0) as number, portions: (value.preparedBatches?.length ?? 0) as number, targets: (value.targets?.length ?? 0) as number, drafts, meaningful: !!(value.logs.length || value.foods.length || value.recipes.length || Object.values(drafts).some(Boolean) || Object.keys(value.quickEntry?.libraryHidden ?? {}).length || value.weighIns?.length || value.mealCorrections?.length || value.shortcuts?.length || value.dayReviews?.length || value.targets?.length || value.preparedBatches?.length) };
 }
 export class RecoveryService {
   private queue: Promise<unknown> = Promise.resolve(); private lastJSON?: string;

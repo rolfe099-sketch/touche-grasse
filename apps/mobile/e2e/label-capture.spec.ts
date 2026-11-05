@@ -106,3 +106,39 @@ test('photo comparison distinguishes printed serving values from normalized per-
   await expect(page.getByText(/^Read:.*120.*kcal/i)).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Energy · kcal', exact: true })).toHaveValue('400');
 });
+
+test('comparison starts without a keyboard, preserves editing focus across nutrients and keeps values when zooming', async ({ page }) => {
+  test.setTimeout(120000); const file = await fixture(page, true); await page.goto('/manual'); await choose(page, file);
+  await expect(page.getByTestId('label-scan-review')).toBeVisible({ timeout: 90000 });
+  await page.getByRole('button', { name: 'Compare with photo', exact: true }).click();
+  await page.getByRole('button', { name: 'Compare label energy', exact: true }).click();
+  const energy = page.getByRole('textbox', { name: 'Energy · kcal', exact: true }); await expect(energy).not.toBeFocused();
+  await energy.click(); await energy.fill('405');
+  await page.getByRole('button', { name: 'Compare label fat', exact: true }).click();
+  const fat = page.getByRole('textbox', { name: 'Fat · g', exact: true }); await expect(fat).toBeFocused(); await page.keyboard.insertText('23'); await expect(fat).toHaveValue('23');
+  await page.getByRole('button', { name: 'Hide keyboard', exact: true }).click(); await expect(fat).not.toBeFocused();
+  await page.getByRole('button', { name: 'Compare label energy', exact: true }).click(); await expect(energy).not.toBeFocused(); await expect(energy).toHaveValue('405');
+  const image = page.getByRole('img', { name: 'Photo matching these label readings', exact: true }), before = (await image.boundingBox())!.width;
+  await page.getByRole('button', { name: 'Zoom photo', exact: true }).click(); await expect.poll(async () => (await image.boundingBox())!.width).toBeGreaterThan(before * 1.9);
+  await page.getByRole('button', { name: 'Fit photo', exact: true }).click();
+  // A small viewport stresses available space; it is not a native keyboard simulation.
+  await page.setViewportSize({ width: 393, height: 560 }); await energy.click();
+  await expect.poll(async () => (await image.boundingBox())!.height).toBeLessThan(180);
+  await page.getByRole('button', { name: 'Hide keyboard', exact: true }).click(); await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByTestId('label-nutrition-review').scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(output, `${test.info().project.name || 'chromium'}-keyboard-review.png`) });
+  await page.getByRole('button', { name: 'All values', exact: true }).click(); await expect(energy).toHaveValue('405'); await expect(fat).toHaveValue('23');
+});
+
+test('enlarged browser text keeps crop actions inside the viewport', async ({ page }) => {
+  test.setTimeout(120000); const file = await fixture(page); await page.goto('/manual'); await choose(page, file);
+  await expect(page.getByTestId('label-scan-review')).toBeVisible({ timeout: 90000 }); await page.getByRole('button', { name: 'Crop or rotate label photo', exact: true }).click();
+  // Browser text stress only. Native Dynamic Type still needs a device check.
+  await page.evaluate(() => {
+    const values = Array.from(document.querySelectorAll<HTMLElement>('div,span,input,textarea')).map(element => ({ element, size: parseFloat(getComputedStyle(element).fontSize), line: parseFloat(getComputedStyle(element).lineHeight) }));
+    for (const { element, size, line } of values) { element.style.fontSize = `${size * 1.7}px`; element.style.lineHeight = Number.isFinite(line) ? `${line * 1.7}px` : '1.3'; }
+  });
+  for (const name of ['Rotate label photo left', 'Rotate label photo right', 'Reset label photo crop', 'Read cropped photo', 'Cancel crop']) {
+    const control = page.getByRole('button', { name, exact: true }); await control.scrollIntoViewIfNeeded(); const box = (await control.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(-1); expect(box.x + box.width).toBeLessThanOrEqual(391); expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+});

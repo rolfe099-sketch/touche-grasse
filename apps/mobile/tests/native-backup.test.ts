@@ -40,7 +40,7 @@ describe('native backup adapter with fake file/share ports (no device execution)
     await expect(exportBackup('{}')).rejects.toThrow('Temporary file storage'); expect(native.fs.writeAsStringAsync).not.toHaveBeenCalled();
   });
   it('reads a picker copy then removes it, and handles cancellation without file access', async () => {
-    expect(await pickBackup()).toBe('{"test":"fixture"}'); expect(native.fs.deleteAsync).toHaveBeenCalledWith('file:///cache/picked.json', { idempotent: true });
+    expect(await pickBackup()).toEqual({ json: '{"test":"fixture"}', name: 'Backup file' }); expect(native.fs.deleteAsync).toHaveBeenCalledWith('file:///cache/picked.json', { idempotent: true });
     native.picker.getDocumentAsync.mockResolvedValue({ canceled: true }); native.fs.getInfoAsync.mockClear();
     expect(await pickBackup()).toBeNull(); expect(native.fs.getInfoAsync).not.toHaveBeenCalled();
   });
@@ -55,6 +55,12 @@ describe('native backup adapter with fake file/share ports (no device execution)
   });
   it('never deletes a document outside the app cache directory', async () => {
     native.picker.getDocumentAsync.mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///documents/original.json', size: 100 }] });
-    expect(await pickBackup()).toBe('{"test":"fixture"}'); expect(native.fs.deleteAsync).not.toHaveBeenCalled();
+    expect(await pickBackup()).toEqual({ json: '{"test":"fixture"}', name: 'Backup file' }); expect(native.fs.deleteAsync).not.toHaveBeenCalled();
   });
+  it('retains the selected filename for the restore review', async () => {
+    native.picker.getDocumentAsync.mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cache/named.json', name: 'Chosen diary.json', size: 100 }] });
+    expect(await pickBackup()).toEqual({ json: '{"test":"fixture"}', name: 'Chosen diary.json' });
+    expect(native.fs.deleteAsync).toHaveBeenCalledExactlyOnceWith('file:///cache/named.json', { idempotent: true });
+  });
+
 });

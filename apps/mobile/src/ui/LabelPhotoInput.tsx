@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Image, Platform, Pressable, View } from 'react-native';
+import { AppState, Image, Keyboard, Platform, Pressable, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { LabelCandidate, parseNutritionLabel } from '../domain/nutritionLabel';
 import { createLabelOCR, pickLabelPhoto, transformLabelPhoto } from '../platform/labelPhoto';
@@ -37,8 +37,8 @@ export function LabelPhotoInput({ onRead, onBusy, onPhoto, disabled, hasReview, 
   return <View testID="label-photo" style={{ marginBottom: 10, gap: 6 }}>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{Platform.OS !== 'web' && <Button label="Take label photo" icon="photo" compact disabled={disabled || busy || !ocr.available} onPress={() => { setError(''); void session.start('camera'); }} />}<Button label="Choose label photo" icon="photo" compact disabled={disabled || busy || !ocr.available} onPress={() => { setError(''); void session.start('library'); }} />{busy && <TextButton label="Cancel scan" onPress={session.stop} />}</View>
     {photo && !editing && <Pressable accessibilityRole="button" accessibilityLabel={large ? 'Collapse label photo' : 'Enlarge label photo'} onPress={() => setLarge(!large)}><Image accessibilityLabel="Latest nutrition label photo" source={{ uri: photo }} resizeMode="contain" style={{ width: '100%', height: large ? 360 : 120, backgroundColor: colors.surface, borderRadius: 5 }} /><Text style={{ fontSize: 11, color: colors.action, marginTop: 3 }}>{large ? 'Collapse photo' : 'Tap to enlarge'}</Text></Pressable>}
-    {original && !editing && <TextButton label="Crop / rotate" accessibilityLabel="Crop or rotate label photo" disabled={disabled || busy} onPress={() => setEditing(true)} />}
-    {original && editing && <LabelPhotoEditor photo={original} initial={edit} busy={busy || disabled} onApply={value => { setEdit(value); setEditing(false); setError(''); void session.adjust(value); }} onCancel={() => setEditing(false)} />}
+    {original && !editing && <TextButton label="Crop / rotate" accessibilityLabel="Crop or rotate label photo" disabled={disabled || busy} onPress={() => { Keyboard.dismiss(); setEditing(true); }} />}
+    {original && editing && <LabelPhotoEditor photo={original} initial={edit} busy={busy || disabled} onApply={value => { Keyboard.dismiss(); setEdit(value); setEditing(false); setError(''); void session.adjust(value); }} onCancel={() => { Keyboard.dismiss(); setEditing(false); }} />}
     {hasReview && !photo && !busy && <Text style={{ fontSize: 12, color: colors.secondary }}>Scan text retained. Compare with the package or choose its photo again.</Text>}
     {busy && <Text accessibilityLiveRegion="polite" style={{ fontSize: 13, color: colors.secondary }}>Reading label on this device…</Text>}
     {!ocr.available && <Text style={{ fontSize: 12, color: colors.secondary }}>{ocr.unavailable}</Text>}

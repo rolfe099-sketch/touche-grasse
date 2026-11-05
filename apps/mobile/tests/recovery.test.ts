@@ -9,6 +9,15 @@ import { emptyDraft, Food } from '../src/domain/model';
 import catalog from '../src/data/catalog.json';
 
 const json = (name = 'meal') => JSON.stringify({ format: 'touche-grasse', version: 2, foods: [], recipes: [], logs: [], draft: { ...emptyDraft(randomUUID), text: name } });
+it('describes saved batches, targets and unfinished work without losing explicit unknowns', () => {
+  const value = JSON.parse(json('unfinished meal')); value.preparedBatches = [{}]; value.targets = [{}];
+  value.quickEntry = { labelDrafts: { 'new:': { values: { protein: '' } } }, voiceDraft: { text: 'Add 15g oil' }, weightDraft: { amount: '80,' }, mealEdit: {} }; value.recipeDrafts = { recipe: {} };
+  expect(inspectRecoveryJSON(JSON.stringify(value))).toMatchObject({ portions: 1, targets: 1, drafts: { meal: true, labels: 1, command: true, weight: true, adjustment: true, recipes: 1 }, meaningful: true });
+  expect(value.quickEntry.labelDrafts['new:'].values.protein).toBe('');
+});
+it('rejects malformed optional collections before presenting restore counts', () => {
+  for (const change of [{ weighIns: {} }, { shortcuts: [null] }, { targets: 'bad' }, { recipeDrafts: [] }, { quickEntry: { labelDrafts: [] } }]) expect(() => inspectRecoveryJSON(JSON.stringify({ ...JSON.parse(json()), ...change }))).toThrow('backup');
+});
 function memory() {
   const copies = new Map<string, RecoveryCopy>(); let fail = false, corrupt = false;
   const port: RecoveryPort = {

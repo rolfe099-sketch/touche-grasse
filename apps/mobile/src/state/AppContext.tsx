@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { ActivityIndicator, Platform, View } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import * as Haptics from 'expo-haptics';
+import { ZodError } from 'zod';
 import catalog from '../data/catalog.json';
 import { Draft, Food } from '../domain/model';
 import { Repository } from '../domain/repository';
@@ -105,7 +106,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Recovery is best effort: a backup-storage error must not remove the
       // existing validated merge-restore workflow or erase the active diary.
       if (recovery) { try { await saveRecovery('before-restore'); } catch { /* The Settings recovery status explains the failure. */ } }
-      await repo.restoreJSON(json, { recoverMissing });
+      try { await repo.restoreJSON(json, { recoverMissing }); }
+      catch (reason) { if (reason instanceof ZodError) throw new Error('This backup contains invalid records. Your current diary is unchanged.'); throw reason; }
     },
     setDraft(value) { updateDraft(value); void repo.saveDraft(value).catch(reason => setError(reason instanceof Error ? reason.message : 'Your unfinished meal could not be saved.')); },
     clearError: () => setError(null), clearNotice: () => setNotice(null),

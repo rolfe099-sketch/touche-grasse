@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';
+import { PickedBackup } from './backup.types';
 
 const maxBackupBytes = 50_000_000;
 export async function exportBackup(json: string) {
@@ -13,7 +14,7 @@ export async function exportBackup(json: string) {
     await Sharing.shareAsync(uri, { mimeType: 'application/json', UTI: 'public.json', dialogTitle: 'Save backup' });
   } finally { await FileSystem.deleteAsync(uri, { idempotent: true }); }
 }
-export async function pickBackup(): Promise<string | null> {
+export async function pickBackup(): Promise<PickedBackup | null> {
   const result = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
   if (result.canceled) return null;
   const asset = result.assets[0];
@@ -23,7 +24,7 @@ export async function pickBackup(): Promise<string | null> {
     const info = await FileSystem.getInfoAsync(asset.uri);
     if (!info.exists || info.isDirectory) throw new Error('This backup file is unavailable. Choose it again.');
     if (info.size > maxBackupBytes) throw new Error('This file is too large.');
-    return await FileSystem.readAsStringAsync(asset.uri);
+    return { json: await FileSystem.readAsStringAsync(asset.uri), name: asset.name || 'Backup file' };
   } finally {
     // Only delete the picker-created sandbox copy, never a provider's original.
     if (FileSystem.cacheDirectory && asset.uri.startsWith(FileSystem.cacheDirectory)) await FileSystem.deleteAsync(asset.uri, { idempotent: true });

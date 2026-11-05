@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInputProps, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput as NativeTextInput, TextInputProps, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { D, display, Food, Nutrition, nutrients } from '../domain/model';
@@ -33,26 +33,26 @@ export function Button({ label, accessibilityLabel, onPress, icon, primary = fal
   const reducedMotion = useReducedMotion();
   const foreground = disabled ? colors.secondary : primary ? colors.onPrimary : selected ? colors.action : colors.ink;
   return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label} accessibilityState={{ disabled, ...(selected === undefined ? {} : { selected }) }} aria-pressed={selected} disabled={disabled} testID={testID} onPress={onPress}
-    style={({ pressed }) => ({ minHeight: compact ? 44 : 48, paddingHorizontal: compact ? 12 : 18, paddingVertical: 10, borderRadius: compact ? 10 : 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: compact ? 6 : 8, backgroundColor: disabled ? colors.surface : primary ? pressed ? colors.primaryPressed : colors.primary : pressed ? colors.pressed : selected ? colors.selection : colors.raised, transform: [{ scale: pressed && !reducedMotion ? .985 : 1 }], opacity: disabled ? .65 : 1, borderWidth: selected ? 1 : 0, borderColor: selected ? colors.action : 'transparent' })}>
+    style={({ pressed }) => ({ minHeight: compact ? 44 : 48, minWidth: 44, maxWidth: '100%', flexShrink: 1, paddingHorizontal: compact ? 12 : 18, paddingVertical: 10, borderRadius: compact ? 10 : 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: compact ? 6 : 8, backgroundColor: disabled ? colors.surface : primary ? pressed ? colors.primaryPressed : colors.primary : pressed ? colors.pressed : selected ? colors.selection : colors.raised, transform: [{ scale: pressed && !reducedMotion ? .985 : 1 }], opacity: disabled ? .65 : 1, borderWidth: selected ? 1 : 0, borderColor: selected ? colors.action : 'transparent' })}>
     {icon && <Icon name={icon} size={compact ? 16 : 19} color={foreground} />}
-    <Text style={{ color: foreground, fontWeight: '600', fontSize: compact ? 14 : 16, lineHeight: compact ? 20 : 22 }}>{label}</Text>
+    <Text style={{ color: foreground, fontWeight: '600', fontSize: compact ? 14 : 16, lineHeight: compact ? 20 : 22, flexShrink: 1, textAlign: 'center' }}>{label}</Text>
   </Pressable>;
 }
 export function SegmentButton({ label, accessibilityLabel, selected, onPress, disabled = false, icon, active = false, testID }: { label: string; accessibilityLabel?: string; selected: boolean; onPress: () => void; disabled?: boolean; icon?: IconName; active?: boolean; testID?: string }) {
   const foreground = active ? colors.onPrimary : selected ? colors.ink : colors.secondary;
   return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label} accessibilityState={{ selected, disabled }} aria-pressed={selected} testID={testID} disabled={disabled} onPress={onPress} style={({ pressed }) => ({ flex: 1, minHeight: 44, paddingHorizontal: 4, borderRadius: 8, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? colors.primary : pressed ? colors.pressed : selected ? colors.raised : 'transparent', opacity: disabled ? .45 : 1 })}>
-    {icon && <Icon name={icon} size={18} color={foreground} />}<Text style={{ fontSize: 14, lineHeight: 20, fontWeight: selected ? '600' : '400', color: foreground }}>{label}</Text>
+    {icon && <Icon name={icon} size={18} color={foreground} />}<Text style={{ fontSize: 14, lineHeight: 20, fontWeight: selected ? '600' : '400', color: foreground, flexShrink: 1, textAlign: 'center' }}>{label}</Text>
   </Pressable>;
 }
 export function TextButton({ label, accessibilityLabel, onPress, disabled = false }: { label: string; accessibilityLabel?: string; onPress: () => void; disabled?: boolean }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={({ pressed }) => ({ minHeight: 44, minWidth: 44, justifyContent: 'center', borderRadius: 8, backgroundColor: pressed ? colors.selection : 'transparent', opacity: disabled ? 0.4 : 1 })}><Text style={{ color: colors.action, fontWeight: '600', fontSize: 14 }}>{label}</Text></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={({ pressed }) => ({ minHeight: 44, minWidth: 44, maxWidth: '100%', flexShrink: 1, justifyContent: 'center', borderRadius: 8, backgroundColor: pressed ? colors.selection : 'transparent', opacity: disabled ? 0.4 : 1 })}><Text style={{ color: colors.action, fontWeight: '600', fontSize: 14, flexShrink: 1 }}>{label}</Text></Pressable>;
 }
 export function IconButton({ name, label, onPress, disabled = false, testID, filled = false, destructive = false }: { name: IconName; label: string; onPress: () => void; disabled?: boolean; testID?: string; filled?: boolean; destructive?: boolean }) {
   return <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} testID={testID}
     style={({ pressed }) => ({ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: filled ? 10 : 22, backgroundColor: pressed ? colors.pressed : filled ? colors.raised : 'transparent', opacity: disabled ? 0.3 : 1 })}><Icon name={name} size={20} color={destructive ? colors.error : filled ? colors.ink : colors.action} /></Pressable>;
 }
-export function Field({ label, compact = false, ...props }: TextInputProps & { label: string; compact?: boolean }) {
-  return <View style={[styles.field, compact && { gap: 3, marginBottom: 6 }]}><Text style={{ fontSize: compact ? 12 : 13, fontWeight: '600', color: colors.secondary }}>{label}</Text><TextInput accessibilityLabel={label} placeholderTextColor={colors.secondary} {...props} style={[styles.input, compact && { minHeight: 44, fontSize: 15, paddingVertical: 8 }, props.style]} /></View>;
+export function Field({ label, compact = false, inputRef, ...props }: TextInputProps & { label: string; compact?: boolean; inputRef?: React.Ref<NativeTextInput> }) {
+  return <View style={[styles.field, compact && { gap: 3, marginBottom: 6 }]}><Text style={{ fontSize: compact ? 12 : 13, fontWeight: '600', color: colors.secondary }}>{label}</Text><TextInput ref={inputRef} accessibilityLabel={label} placeholderTextColor={colors.secondary} {...props} style={[styles.input, compact && { minHeight: 44, fontSize: 15, paddingVertical: 8 }, props.style]} /></View>;
 }
 export function Section({ title, children }: { title: string; children?: React.ReactNode }) {
   return <View style={styles.section}><Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '700', letterSpacing: -0.2, color: colors.ink }}>{title}</Text>{children}</View>;

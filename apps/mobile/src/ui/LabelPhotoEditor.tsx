@@ -48,6 +48,6 @@ export function LabelPhotoEditor({ photo, initial, busy, onApply, onCancel }: { 
     <TextButton label={precise ? 'Hide edge controls' : 'Adjust edges precisely'} onPress={() => setPrecise(!precise)} />
     {precise && <View><Text style={{ color: colors.secondary, fontSize: 11 }}>Percent trimmed from each edge</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{['Left', 'Top', 'Right', 'Bottom'].map((name, index) => <View key={name} style={{ width: '47%' }}><Field compact label={`${name} trim · %`} value={margins[index]} keyboardType="decimal-pad" selectTextOnFocus maxLength={6} editable={!busy} onChangeText={value => setMargins(old => old.map((item, i) => i === index ? value : item))} /></View>)}</View></View>}
     {!!error && <Text accessibilityRole="alert" style={{ fontSize: 12, color: colors.error }}>{error}</Text>}
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><Button compact primary label="Read cropped photo" disabled={busy || !!error} onPress={() => onApply({ rotation, crop })} /><TextButton label="Cancel crop" disabled={busy} onPress={onCancel} /></View>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}><Button compact primary label="Read cropped photo" disabled={busy || !!error} onPress={() => onApply({ rotation, crop })} /><TextButton label="Cancel crop" disabled={busy} onPress={onCancel} /></View>
   </View>;
 }
