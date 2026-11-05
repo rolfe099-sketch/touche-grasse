@@ -35,6 +35,9 @@ test('rotate and crop a real image, compare the matching photo, retain correctio
   await page.getByRole('textbox', { name: 'Food name', exact: true }).fill('Crop test label');
   await page.getByRole('textbox', { name: 'Energy · kcal', exact: true }).fill('410');
   await page.getByRole('textbox', { name: 'Fat · g', exact: true }).fill('23');
+  // The sideways first read differs across engines. Make clearing a real edit:
+  // filling an already-empty field emits no input event in WebKit.
+  await page.getByRole('textbox', { name: 'Protein · g', exact: true }).fill('1');
   await page.getByRole('textbox', { name: 'Protein · g', exact: true }).fill('');
   // Cancelling a replacement picker preserves the local preview and readings.
   await choose(page); await expect.poll(() => dimensions(page)).toEqual([1400, 1600]);
