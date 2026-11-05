@@ -55,6 +55,7 @@ jobs:
             verification/recovery
             verification/repeat-meals
             verification/daily-workflows
+            verification/meal-editing-weight
             verification/label-scanning
             apps/mobile/test-results
           retention-days: 7

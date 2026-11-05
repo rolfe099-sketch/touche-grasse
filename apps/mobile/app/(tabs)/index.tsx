@@ -17,6 +17,7 @@ import { CalendarPicker } from '../../src/ui/Calendar';
 import { TargetEditor } from '../../src/ui/Targets';
 import { targetOn } from '../../src/domain/targets';
 import { RepeatMealReview } from '../../src/ui/RepeatMealReview';
+import { MealCorrectionHistory } from '../../src/ui/MealEditor';
 import { MealShortcuts } from '../../src/ui/MealShortcuts';
 import { DayCompletion } from '../../src/ui/DayCompletion';
 import { frequentMealBatches } from '../../src/domain/quickEntry';
@@ -45,7 +46,7 @@ export default function Today() {
     <MealShortcuts onLogged={() => setDate(new Date())} />
     {editingTargets && isToday && <TargetEditor onClose={() => setEditingTargets(false)} />}
     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, padding: 4, paddingLeft: 12, gap: 3, borderRadius: 9, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, overflow: 'hidden' }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={repo.quickEntry.repeatReview ? 'Continue adjusted repeat' : draft.lines.length || draft.text ? 'Continue your meal' : 'Log food'} testID="today-add" onPress={() => openLog()} style={({ pressed }) => ({ flex: 1, minHeight: 44, justifyContent: 'center', opacity: pressed ? .6 : 1 })}><Text style={{ fontSize: 16 }}>{repo.quickEntry.repeatReview ? 'Continue adjusted repeat…' : draft.lines.length || draft.text ? 'Continue your meal…' : 'What did you eat?'}</Text><Text style={{ color: colors.secondary, fontSize: 13 }}>{repo.quickEntry.repeatReview ? `${repo.quickEntry.repeatReview.entries.length} saved amounts to review` : draft.lines.length ? `${draft.lines.length} ingredients in your draft` : 'Type a meal or use your voice'}</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={repo.quickEntry.mealEdit ? 'Continue meal edit' : repo.quickEntry.repeatReview ? 'Continue adjusted repeat' : draft.lines.length || draft.text ? 'Continue your meal' : 'Log food'} testID="today-add" onPress={() => openLog()} style={({ pressed }) => ({ flex: 1, minHeight: 44, justifyContent: 'center', opacity: pressed ? .6 : 1 })}><Text style={{ fontSize: 16 }}>{repo.quickEntry.mealEdit ? 'Continue meal edit' : repo.quickEntry.repeatReview ? 'Continue adjusted repeat…' : draft.lines.length || draft.text ? 'Continue your meal…' : 'What did you eat?'}</Text><Text style={{ color: colors.secondary, fontSize: 13 }}>{repo.quickEntry.mealEdit ? 'Ingredient changes saved in your draft' : repo.quickEntry.repeatReview ? `${repo.quickEntry.repeatReview.entries.length} saved amounts to review` : draft.lines.length ? `${draft.lines.length} ingredients in your draft` : 'Type a meal or use your voice'}</Text></Pressable>
       <IconButton name="mic" label="Log with voice" disabled={!!repo.quickEntry.repeatReview} filled onPress={() => openLog('voice')} /><IconButton name="camera" label="Scan food" disabled={!!repo.quickEntry.repeatReview} onPress={() => openLog('scan')} />
     </View>
     <RepeatMealReview onLogged={() => setDate(new Date())} />
@@ -59,6 +60,8 @@ export default function Today() {
     {!logs.length && <View style={{ paddingVertical: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line }}><Text style={{ fontSize: 16, fontWeight: '600' }}>No meals logged</Text><Text style={{ fontSize: 13, color: colors.secondary, marginTop: 4 }}>Add food with the Log button below.</Text></View>}
     <Diary entries={logs} compact />
     <DayCompletion date={dayKey(date)} />
+    <MealCorrectionHistory date={dayKey(date)} />
+    <TextButton label="Log weight" onPress={() => router.push({ pathname: '/history', params: { view: 'weight', date: dayKey(date), scope: 'week' } })} />
     {!!recent.length && !logs.length && <><Section title="Recent food"><TextButton label="History →" onPress={() => router.push('/history')} /></Section>{recent.map(log => <View key={log.id} testID="recent-row" style={[styles.row, { paddingVertical: 8 }]}><View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.foodName, { fontSize: 14 }]}>{logName(log)}</Text><Text style={{ fontSize: 12, color: colors.secondary }}>{logQuantity(log)} · {display(log.nutrition.kcal, 0)} kcal</Text></View><IconButton name="repeat" label={`Log ${logName(log)} again`} disabled={busy} onPress={() => void run(() => repo.repeat(log), 'Logged for today')} /></View>)}</>}
     {!isToday && <TextButton label="Today" onPress={() => setDate(new Date())} />}
     <CalendarPicker visible={picker} selected={date} index={index} firstUsedAt={repo.profile.firstUsedAt} onSelect={setDate} onClose={() => setPicker(false)} />

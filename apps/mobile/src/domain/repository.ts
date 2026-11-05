@@ -9,9 +9,11 @@ import { sameBarcode } from './barcode';
 import { makeRepeatReview, repeatReviewSchema, reviewRepeatedMeal } from './repeatMeal';
 import { LabelForm, labelFormSchema } from './nutritionLabel';
 import { DayReview, dayReviewSchema, daySignature, MealShortcut, mealShortcutSchema, validateShortcut } from './dailyWorkflows';
+import { MealEdit, mealEditSchema, makeMealEdit, MealCorrection, mealCorrectionSchema, reviewMealEdit, validateLogCalculation } from './mealEditor';
+import { WeighIn, weighInSchema, validateWeighIn, WeightUnit, weightKg, WeightDraft, weightDraftSchema } from './weight';
 import { localDate } from './history';
 
-const archiveSchema = z.object({ format: z.literal('touche-grasse'), version: z.literal(2), foods: z.array(foodSchema).max(20000), logs: z.array(logSchema).max(100000), recipes: z.array(recipeSchema).max(10000), draft: draftSchema, profile: profileSchema.optional(), recipeDrafts: z.record(z.string(), recipeDraftSchema).optional(), quickEntry: quickEntrySchema.optional(), preparedBatches: z.array(preparedBatchSchema).max(20000).optional(), targets: z.array(targetChangeSchema).max(20000).optional(), shortcuts: z.array(mealShortcutSchema).max(1000).optional(), dayReviews: z.array(dayReviewSchema).max(100000).optional() });
+const archiveSchema = z.object({ format: z.literal('touche-grasse'), version: z.literal(2), foods: z.array(foodSchema).max(20000), logs: z.array(logSchema).max(100000), recipes: z.array(recipeSchema).max(10000), draft: draftSchema, profile: profileSchema.optional(), recipeDrafts: z.record(z.string(), recipeDraftSchema).optional(), quickEntry: quickEntrySchema.optional(), preparedBatches: z.array(preparedBatchSchema).max(20000).optional(), targets: z.array(targetChangeSchema).max(20000).optional(), shortcuts: z.array(mealShortcutSchema).max(1000).optional(), dayReviews: z.array(dayReviewSchema).max(100000).optional(), mealCorrections: z.array(mealCorrectionSchema).max(20000).optional(), weighIns: z.array(weighInSchema).max(100000).optional() });
 function utf8Size(value: string) {
   let bytes = 0;
   for (const char of value) { const point = char.codePointAt(0)!; bytes += point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4; }
@@ -22,6 +24,11 @@ export class Repository {
   targets: TargetChange[] = [];
   shortcuts: MealShortcut[] = [];
   dayReviews: DayReview[] = [];
+  mealCorrections: MealCorrection[] = [];
+  weighIns: WeighIn[] = [];
+  private correctionUndo: string | null = null;
+  get isCorrectionUndo() { return !!this.correctionUndo && this.mealCorrections.some(item => item.id === this.correctionUndo && !item.revertedAt); }
+  get undoToken() { return JSON.stringify([this.undo, this.isDeletionUndo, this.correctionUndo]); }
   private catalogFoods = new Map<string, Food>();
   foods: Food[] = [];
   preparedBatches: PreparedBatch[] = [];
@@ -31,8 +38,8 @@ export class Repository {
   undo: string[] = [];
   private deletionUndo: LogEntry[] = [];
   get isDeletionUndo() { return !!this.deletionUndo.length && this.deletionUndo.length === this.undo.length && this.deletionUndo.every(log => this.undo.includes(log.id)); }
-  get undoLabel() { return this.isDeletionUndo ? 'Undo deletion' : 'Undo last log'; }
-  get undoNotice() { return this.isDeletionUndo ? 'Deletion undone' : 'Log undone'; }
+  get undoLabel() { if (this.isCorrectionUndo) return 'Undo meal correction'; return this.isDeletionUndo ? 'Undo deletion' : 'Undo last log'; }
+  get undoNotice() { if (this.isCorrectionUndo) return 'Meal correction undone'; return this.isDeletionUndo ? 'Deletion undone' : 'Log undone'; }
   profile = { firstUsedAt: new Date().toISOString() };
   recipeDrafts: Record<string, z.infer<typeof recipeDraftSchema>> = {};
   quickEntry: QuickEntryPreferences = emptyPreferences();
@@ -60,6 +67,9 @@ export class Repository {
       else if (record.kind === 'quickEntry') this.quickEntry = quickEntrySchema.parse(record.value);
       else if (record.kind === 'targetChange') this.targets.push(targetChangeSchema.parse(record.value));
       else if (record.kind === 'mealShortcut') this.shortcuts.push(validateShortcut(record.value));
+      else if (record.kind === 'mealCorrection') { const correction = mealCorrectionSchema.parse(record.value); [...correction.previous, ...correction.applied].forEach(validateLogCalculation); this.mealCorrections.push(correction); }
+      else if (record.kind === 'correctionUndo') this.correctionUndo = z.string().nullable().parse(record.value);
+      else if (record.kind === 'weighIn') this.weighIns.push(validateWeighIn(record.value));
       else if (record.kind === 'dayReview') this.dayReviews.push(dayReviewSchema.parse(record.value));
     }
     const earliest = [this.profile.firstUsedAt, ...this.logs.flatMap(log => [log.recordedAt, ...(log.corrections ?? []).map(c => c.previous.recordedAt)])].sort()[0];
@@ -90,11 +100,16 @@ export class Repository {
     const dates = [this.profile.firstUsedAt];
     for (const change of changes) if (change.type === 'put') {
       if (change.record.kind === 'log') { const log = change.record.value as LogEntry; dates.push(log.recordedAt, ...(log.corrections ?? []).map(c => c.previous.recordedAt)); }
+      if (change.record.kind === 'weighIn') dates.push(localDate((change.record.value as WeighIn).id).toISOString());
       if (change.record.kind === 'profile') dates.push(profileSchema.parse(change.record.value).firstUsedAt);
     }
     const profile = { firstUsedAt: dates.sort()[0] };
-    const batch = [...changes.filter(change => change.type !== 'put' || change.record.kind !== 'profile'), put('profile', 'identity', profile)];
+    const correctionState = changes.find(change => change.type === 'put' && change.record.kind === 'correctionUndo');
+    const clearsCorrection = changes.some(change => change.type === 'put' && change.record.kind === 'undo') && !correctionState;
+    const batch = [...(clearsCorrection ? [put('correctionUndo', 'latest', null)] : []), ...changes.filter(change => change.type !== 'put' || change.record.kind !== 'profile'), put('profile', 'identity', profile)];
     this.revision = await this.storage.commit(batch, this.revision); this.profile = profile;
+    if (clearsCorrection) this.correctionUndo = null;
+    else if (correctionState?.type === 'put') this.correctionUndo = z.string().nullable().parse(correctionState.record.value);
   }
   private checkBarcodes(foods: Food[]) {
     const map = new Map<string, string>();
@@ -254,6 +269,7 @@ export class Repository {
   }
   startShortcutReview(id: string) {
     return this.serialized(async () => {
+      if (this.quickEntry.mealEdit) throw new Error('Finish or cancel your meal edit first.');
       if (this.quickEntry.repeatReview) throw new Error('Finish or cancel your current adjusted meal first.');
       const repeatReview = { ...makeRepeatReview(this.shortcutEntries(id), this.id()), shortcutId: id };
       const preferences = quickEntrySchema.parse({ ...this.quickEntry, repeatReview });
@@ -269,9 +285,112 @@ export class Repository {
       this.dayReviews = [...this.dayReviews.filter(item => item.id !== date), review];
     });
   }
+  saveWeighIn(date: string, text: string, unit: WeightUnit = 'kg', now = new Date()) {
+    localDate(date); if (date > dayKey(now)) throw new Error('Choose today or an earlier weigh-in date.');
+    const kg = weightKg(text, unit);
+    return this.serialized(async () => {
+      const current = this.weighIns.find(item => item.id === date);
+      if ((current?.previous.length ?? 0) >= 200) throw new Error('This weigh-in has reached its correction limit.');
+      const value = validateWeighIn({ id: date, kg, recordedAt: now.toISOString(), deletedAt: null, previous: current ? [...current.previous, { kg: current.kg, recordedAt: current.recordedAt }] : [] });
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, weightUnit: unit, weightDraft: null });
+      await this.commit([put('weighIn', date, value), put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences; this.weighIns = [...this.weighIns.filter(item => item.id !== date), value];
+    });
+  }
+  deleteWeighIn(date: string, deleted = true) {
+    return this.serialized(async () => {
+      const current = this.weighIns.find(item => item.id === date); if (!current) throw new Error('This weigh-in is no longer available.');
+      const value = { ...current, deletedAt: deleted ? new Date().toISOString() : null };
+      await this.commit([put('weighIn', date, value)]); this.weighIns = this.weighIns.map(item => item.id === date ? value : item);
+    });
+  }
+  saveWeightDraft(input: WeightDraft | null) {
+    const draft = input ? weightDraftSchema.parse(structuredCopy(input)) : null;
+    return this.serialized(async () => {
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, weightDraft: draft });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
+    });
+  }
+  startMealEdit(entryIds: string[] | { shortcutId: string }) {
+    const target = structuredCopy(entryIds);
+    return this.serialized(async () => {
+      if (this.quickEntry.mealEdit || this.quickEntry.repeatReview) throw new Error('Finish or cancel the open meal review first.');
+      const entries = Array.isArray(target) ? [...new Set(target)].map(id => { const entry = this.logs.find(item => item.id === id); if (!entry) throw new Error('This entry is no longer available.'); return entry; }) : this.shortcutEntries(target.shortcutId);
+      const mealEdit = makeMealEdit(entries, this.id(), Array.isArray(target) ? undefined : target.shortcutId);
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, mealEdit });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
+    });
+  }
+  editRepeatFoods(reviewId: string) {
+    return this.serialized(async () => {
+      const review = this.quickEntry.repeatReview;
+      if (!review || review.id !== reviewId || !review.shortcutId) throw new Error('Open a saved shortcut to edit its ingredients.');
+      const progress = reviewRepeatedMeal(review); if (!progress.valid) throw new Error('Check the amounts first.');
+      const original = this.shortcutEntries(review.shortcutId), mealEdit = makeMealEdit(original, this.id(), review.shortcutId);
+      mealEdit.rows = progress.rows.map(row => ({ entry: { ...row.entry, snapshot: row.snapshot!, nutrition: row.nutrition! }, amount: row.snapshot!.kind === 'food' ? row.snapshot!.ingredient.quantity : row.snapshot!.quantity, ingredients: {} }));
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, mealEdit, repeatReview: undefined });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
+    });
+  }
+  saveMealEditDraft(input: MealEdit) {
+    const mealEdit = mealEditSchema.parse(structuredCopy(input));
+    return this.serialized(async () => {
+      if (this.quickEntry.mealEdit?.id !== mealEdit.id) throw new Error('This meal edit is no longer open.');
+      // Target and concurrency baseline are immutable; only editable rows change.
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, mealEdit: { ...this.quickEntry.mealEdit, rows: mealEdit.rows } });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
+    });
+  }
+  cancelMealEdit(id: string) {
+    return this.serialized(async () => {
+      if (this.quickEntry.mealEdit?.id !== id) throw new Error('This meal edit is no longer open.');
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, mealEdit: undefined });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
+    });
+  }
+  commitMealEdit(id: string) {
+    return this.serialized(async () => {
+      const edit = this.quickEntry.mealEdit; if (!edit || edit.id !== id) throw new Error('This meal edit is no longer open.');
+      const current = edit.target === 'shortcut' ? this.shortcutEntries(edit.shortcutId!) : edit.original.map(original => this.logs.find(entry => entry.id === original.id));
+      if (JSON.stringify(current.map(entry => entry ? logSchema.parse(entry) : null)) !== JSON.stringify(edit.original)) throw new Error('This meal changed while you were editing. Cancel and reopen it to keep the newer changes.');
+      const progress = reviewMealEdit(edit); if (!progress.valid) throw new Error('Resolve every ingredient and amount before saving.');
+      const now = new Date().toISOString(), first = edit.original[0];
+      const applied = progress.rows.map(({ row, snapshot, nutrition }) => {
+        const original = edit.original.find(entry => entry.id === row.entry.id);
+        if (!original && this.logs.some(entry => entry.id === row.entry.id)) throw new Error('A new row has an existing diary identity.');
+        if (original && JSON.stringify(original.snapshot) === JSON.stringify(snapshot)) return structuredCopy(original);
+        const baseline = original ?? { id: row.entry.id, batchId: first.batchId, recordedAt: first.recordedAt, meal: first.meal };
+        let batchRecipe = original?.batchRecipe;
+        if (original?.preparedBatchId) {
+          if (original.snapshot.kind !== 'recipe' || snapshot!.kind !== 'recipe') throw new Error('Keep a saved portion as a recipe. Add extra foods separately.');
+          batchRecipe = original.batchRecipe ?? original.snapshot.recipe;
+          if (snapshot!.recipe.servings !== batchRecipe.servings || snapshot!.recipe.cookedWeightGrams !== batchRecipe.cookedWeightGrams) throw new Error('Keep the original serving and measured weight basis.');
+        }
+        const changed = original && JSON.stringify(original.snapshot) !== JSON.stringify(snapshot);
+        if (changed && (original.corrections?.length ?? 0) >= 200) throw new Error('This entry has reached its correction limit.');
+        return logSchema.parse({ ...baseline, snapshot, nutrition, batchRecipe,
+          corrections: edit.target === 'logs' && changed ? [...(original.corrections ?? []), { correctedAt: now, previous: { recordedAt: original.recordedAt, meal: original.meal, snapshot: original.snapshot, nutrition: original.nutrition, batchRecipe: original.batchRecipe } }] : original?.corrections });
+      });
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, mealEdit: undefined });
+      if (edit.target === 'shortcut') {
+        const previous = this.shortcuts.find(item => item.id === edit.shortcutId)!;
+        const shortcut = validateShortcut({ ...previous, entries: applied.map(entry => ({ ...entry, corrections: undefined })), updatedAt: now });
+        // Validate finite portion references without consuming a portion.
+        assertBatchCapacity(this.preparedBatches, applied);
+        await this.commit([put('mealShortcut', shortcut.id, shortcut), put('quickEntry', 'preferences', preferences)]);
+        this.shortcuts = this.shortcuts.map(item => item.id === shortcut.id ? shortcut : item); this.quickEntry = preferences; return;
+      }
+      if (this.mealCorrections.length >= 20000) throw new Error('This diary has reached its meal-correction limit.');
+      const removedIds = new Set(edit.original.map(entry => entry.id)), logs = [...this.logs.filter(entry => !removedIds.has(entry.id)), ...applied];
+      assertBatchCapacity(this.preparedBatches, logs);
+      const correction = mealCorrectionSchema.parse({ id: this.id(), correctedAt: now, previous: edit.original, applied, revertedAt: null });
+      await this.commit([...edit.original.map(entry => ({ type: 'delete' as const, key: `log:${entry.id}` })), ...applied.map(entry => put('log', entry.id, entry)), put('mealCorrection', correction.id, correction), put('correctionUndo', 'latest', correction.id), put('undo', 'latest', applied.map(entry => entry.id)), put('deletionUndo', 'latest', []), put('quickEntry', 'preferences', preferences)]);
+      this.logs = logs; this.mealCorrections = [...this.mealCorrections, correction]; this.undo = applied.map(entry => entry.id); this.deletionUndo = []; this.quickEntry = preferences; this.sortAndIndex();
+    });
+  }
   startRepeatReview(entryIds: string[]) {
     const ids = [...new Set(entryIds)];
     return this.serialized(async () => {
+      if (this.quickEntry.mealEdit) throw new Error('Finish or cancel your meal edit first.');
       if (this.quickEntry.repeatReview) throw new Error('Finish or cancel your current repeat first.');
       if (!ids.length || ids.length > 200) throw new Error('Choose a meal with 1–200 entries.');
       const entries = ids.map(id => { const entry = this.logs.find(log => log.id === id); if (!entry) throw new Error('This meal is no longer available.'); return entry; });
@@ -304,7 +423,7 @@ export class Repository {
       const progress = reviewRepeatedMeal(review);
       if (!progress.valid) throw new Error('Check the highlighted amounts before logging.');
       const batchId = this.id();
-      const logs = progress.rows.map(row => logSchema.parse({ id: this.id(), batchId, recordedAt: at.toISOString(), meal: row.entry.meal, preparedBatchId: row.entry.preparedBatchId, snapshot: row.snapshot, nutrition: row.nutrition }));
+      const logs = progress.rows.map(row => logSchema.parse({ id: this.id(), batchId, recordedAt: at.toISOString(), meal: row.entry.meal, preparedBatchId: row.entry.preparedBatchId, batchRecipe: row.entry.batchRecipe, snapshot: row.snapshot, nutrition: row.nutrition }));
       assertBatchCapacity(this.preparedBatches, [...this.logs, ...logs]);
       const preferences = quickEntrySchema.parse({ ...this.quickEntry, repeatReview: undefined }), undo = logs.map(log => log.id);
       await this.commit([...logs.map(log => put('log', log.id, log)), put('quickEntry', 'preferences', preferences), put('undo', 'latest', undo), put('deletionUndo', 'latest', [])]);
@@ -344,6 +463,16 @@ export class Repository {
   undoLast() {
     return this.serialized(async () => {
       if (!this.undo.length) return;
+      if (this.isCorrectionUndo) {
+        const correction = this.mealCorrections.find(item => item.id === this.correctionUndo)!;
+        if (correction.applied.some(applied => JSON.stringify(this.logs.find(entry => entry.id === applied.id)) !== JSON.stringify(applied))) throw new Error('The corrected meal changed again. Its previous values are kept in correction history.');
+        const ids = new Set(correction.applied.map(entry => entry.id)), remaining = this.logs.filter(entry => !ids.has(entry.id));
+        if (correction.previous.some(entry => remaining.some(item => item.id === entry.id))) throw new Error('An original entry already exists.');
+        const logs = [...remaining, ...structuredCopy(correction.previous)]; assertBatchCapacity(this.preparedBatches, logs);
+        const reverted = { ...correction, revertedAt: new Date().toISOString() };
+        await this.commit([...correction.applied.map(entry => ({ type: 'delete' as const, key: `log:${entry.id}` })), ...correction.previous.map(entry => put('log', entry.id, entry)), put('mealCorrection', correction.id, reverted), put('undo', 'latest', []), put('deletionUndo', 'latest', [])]);
+        this.mealCorrections = this.mealCorrections.map(item => item.id === reverted.id ? reverted : item); this.logs = logs; this.undo = []; this.deletionUndo = []; this.sortAndIndex(); return;
+      }
       if (this.isDeletionUndo) {
         if (this.deletionUndo.some(deleted => this.logs.some(log => log.id === deleted.id))) throw new Error('These entries already exist. Reload before continuing.');
         const restored = [...this.logs, ...this.deletionUndo];
@@ -370,10 +499,12 @@ export class Repository {
         if (patch.unit && patch.unit !== 'g' && patch.unit !== 'servings') throw new Error('Choose grams or servings for a recipe.');
         snapshot.quantity = patch.quantity; snapshot.unit = patch.unit ?? snapshot.unit;
       }
-      const previous = { recordedAt: entry.recordedAt, meal: entry.meal, snapshot: entry.snapshot, nutrition: entry.nutrition };
+      const previous = { batchRecipe: entry.batchRecipe, recordedAt: entry.recordedAt, meal: entry.meal, snapshot: entry.snapshot, nutrition: entry.nutrition };
       const corrected = logSchema.parse({ ...entry, recordedAt: patch.recordedAt ?? entry.recordedAt, meal: patch.meal ?? entry.meal, snapshot, nutrition: snapshotNutrition(snapshot), corrections: [...(entry.corrections ?? []), { correctedAt: new Date().toISOString(), previous }] });
       assertBatchCapacity(this.preparedBatches, this.logs.map(log => log.id === id ? corrected : log));
-      await this.commit([put('log', id, corrected)]);
+      const invalidateCorrectionUndo = this.isCorrectionUndo && this.undo.includes(id);
+      await this.commit([put('log', id, corrected), ...(invalidateCorrectionUndo ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
+      if (invalidateCorrectionUndo) { this.undo = []; this.deletionUndo = []; }
       this.logs = this.logs.map(log => log.id === id ? corrected : log); this.sortAndIndex();
     });
   }
@@ -435,7 +566,7 @@ export class Repository {
   async waitForWrites() { await this.queue; }
   async exportJSON() {
     await this.queue;
-    const json = JSON.stringify({ format: 'touche-grasse', version: 2, profile: this.profile, foods: this.foods, logs: this.logs, recipes: this.recipes, draft: this.draft, recipeDrafts: this.recipeDrafts, quickEntry: this.quickEntry, preparedBatches: this.preparedBatches, targets: this.targets, shortcuts: this.shortcuts, dayReviews: this.dayReviews }, null, 2);
+    const json = JSON.stringify({ format: 'touche-grasse', version: 2, profile: this.profile, foods: this.foods, logs: this.logs, recipes: this.recipes, draft: this.draft, recipeDrafts: this.recipeDrafts, quickEntry: this.quickEntry, preparedBatches: this.preparedBatches, targets: this.targets, shortcuts: this.shortcuts, dayReviews: this.dayReviews, mealCorrections: this.mealCorrections, weighIns: this.weighIns }, null, 2);
     if (utf8Size(json) > 50_000_000) throw new Error('This backup exceeds 50 MB. Remove or reduce recipe photos before exporting.');
     return json;
   }
@@ -444,6 +575,8 @@ export class Repository {
     const backup = archiveSchema.parse(JSON.parse(json));
     (backup.preparedBatches ?? []).forEach(validateBatch);
     (backup.shortcuts ?? []).forEach(validateShortcut);
+    (backup.weighIns ?? []).forEach(validateWeighIn);
+    (backup.mealCorrections ?? []).forEach(item => [...item.previous, ...item.applied].forEach(validateLogCalculation));
     (backup.dayReviews ?? []).forEach(review => localDate(review.id));
     backup.foods.forEach(validateFood); backup.recipes.forEach(recipeTotal);
     backup.logs.flatMap(log => [log, ...(log.corrections ?? []).map(c => c.previous)]).forEach(log => {
@@ -453,7 +586,7 @@ export class Repository {
         if ((a == null) !== (b == null) || (a != null && b != null && !new D(a).eq(b))) throw new Error('The backup contains an invalid nutrition calculation.');
       }
     });
-    for (const items of [backup.foods, backup.logs, backup.recipes, backup.preparedBatches ?? [], backup.targets ?? [], backup.shortcuts ?? [], backup.dayReviews ?? []]) if (new Set(items.map(i => i.id)).size !== items.length) throw new Error('The backup contains duplicate identities.');
+    for (const items of [backup.foods, backup.logs, backup.recipes, backup.preparedBatches ?? [], backup.targets ?? [], backup.shortcuts ?? [], backup.dayReviews ?? [], backup.mealCorrections ?? [], backup.weighIns ?? []]) if (new Set(items.map(i => i.id)).size !== items.length) throw new Error('The backup contains duplicate identities.');
     return this.serialized(async () => {
       const merge = <T extends { id: string }>(a: T[], b: T[]) => [...new Map([...a, ...b].map(value => [value.id, value])).values()];
       const foods = options.recoverMissing ? merge(backup.foods, this.foods) : merge(this.foods, backup.foods); this.checkBarcodes(foods);
@@ -464,6 +597,11 @@ export class Repository {
       // Local edits, explicit reopenings and deletion tombstones win over old copies.
       const shortcuts = merge(backup.shortcuts ?? [], this.shortcuts);
       const dayReviews = merge(backup.dayReviews ?? [], this.dayReviews);
+      const mealCorrections = merge(backup.mealCorrections ?? [], this.mealCorrections);
+      const weighIns = merge(backup.weighIns ?? [], this.weighIns);
+      // Do not resurrect ingredients removed by an already-applied local meal correction.
+      const removed = new Set(this.mealCorrections.filter(item => !item.revertedAt).flatMap(item => item.previous.filter(entry => !item.applied.some(after => after.id === entry.id)).map(entry => entry.id)));
+      for (let i = logs.length - 1; i >= 0; i--) if (removed.has(logs[i].id) && !this.logs.some(local => local.id === logs[i].id)) logs.splice(i, 1);
       const names = shortcuts.filter(item => !item.deletedAt).map(item => normalize(item.name));
       if (new Set(names).size !== names.length) throw new Error("Two shortcuts use the same name. Rename the local shortcut before restoring.");
       if (shortcuts.length > 1000) throw new Error("This restore exceeds 1,000 shortcuts.");
@@ -475,11 +613,11 @@ export class Repository {
       const recipeDrafts = { ...backup.recipeDrafts, ...this.recipeDrafts };
       const matches = { ...backup.quickEntry?.matches };
       for (const [query, match] of Object.entries(this.quickEntry.matches)) if (options.recoverMissing || !matches[query] || matches[query].confirmedAt <= match.confirmedAt) matches[query] = match;
-      const preferences = quickEntrySchema.parse({ libraryHidden: backup.quickEntry?.libraryHidden || this.quickEntry.libraryHidden ? { ...backup.quickEntry?.libraryHidden, ...this.quickEntry.libraryHidden } : undefined, entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, labelDrafts: backup.quickEntry?.labelDrafts || this.quickEntry.labelDrafts ? { ...backup.quickEntry?.labelDrafts, ...this.quickEntry.labelDrafts } : undefined, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
-      const clearingDeletion = this.isDeletionUndo;
-      await this.commit([...shortcuts.map(item => put('mealShortcut', item.id, item)), ...dayReviews.map(item => put('dayReview', item.id, item)), ...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : []), ...(clearingDeletion ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
+      const preferences = quickEntrySchema.parse({ weightDraft: this.quickEntry.weightDraft !== undefined ? this.quickEntry.weightDraft : backup.quickEntry?.weightDraft, weightUnit: this.quickEntry.weightUnit ?? backup.quickEntry?.weightUnit, mealEdit: this.quickEntry.mealEdit ?? backup.quickEntry?.mealEdit, libraryHidden: backup.quickEntry?.libraryHidden || this.quickEntry.libraryHidden ? { ...backup.quickEntry?.libraryHidden, ...this.quickEntry.libraryHidden } : undefined, entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, labelDrafts: backup.quickEntry?.labelDrafts || this.quickEntry.labelDrafts ? { ...backup.quickEntry?.labelDrafts, ...this.quickEntry.labelDrafts } : undefined, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
+      const clearingDeletion = this.isDeletionUndo || this.isCorrectionUndo;
+      await this.commit([...weighIns.map(item => put('weighIn', item.id, item)), ...mealCorrections.map(item => put('mealCorrection', item.id, item)), ...shortcuts.map(item => put('mealShortcut', item.id, item)), ...dayReviews.map(item => put('dayReview', item.id, item)), ...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : []), ...(clearingDeletion ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
       if (clearingDeletion) { this.undo = []; this.deletionUndo = []; }
-      this.shortcuts = shortcuts; this.dayReviews = dayReviews; this.targets = targets; this.quickEntry = preferences; this.preparedBatches = preparedBatches;
+      this.weighIns = weighIns; this.mealCorrections = mealCorrections; this.shortcuts = shortcuts; this.dayReviews = dayReviews; this.targets = targets; this.quickEntry = preferences; this.preparedBatches = preparedBatches;
       this.foods = foods; this.recipes = recipes; this.logs = logs; this.draft = draft; this.sortAndIndex();
       this.recipeDrafts = recipeDrafts;
     });

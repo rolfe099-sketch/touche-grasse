@@ -10,7 +10,8 @@ export function batchBalance(batch: PreparedBatch, logs: LogEntry[]) {
   let usedServings = new D(0), usedGrams = new D(0);
   for (const log of logs) {
     if (log.preparedBatchId !== batch.id) continue;
-    if (log.snapshot.kind !== 'recipe' || JSON.stringify(log.snapshot.recipe) !== JSON.stringify(recipe)) throw new Error('A saved portion does not match its original batch.');
+    if (log.snapshot.kind !== 'recipe' || JSON.stringify(log.batchRecipe ?? log.snapshot.recipe) !== JSON.stringify(recipe)) throw new Error('A saved portion does not match its original batch.');
+    if (log.snapshot.recipe.servings !== recipe.servings || log.snapshot.recipe.cookedWeightGrams !== recipe.cookedWeightGrams) throw new Error('A portion correction must keep its original serving and measured weight basis.');
     const amount = positive(log.snapshot.quantity);
     if (parseAmount(log.snapshot.quantity) === null) throw new Error('Use up to six decimal places for a batch portion.');
     if (log.snapshot.unit === 'servings') usedServings = usedServings.plus(amount);
@@ -22,6 +23,7 @@ export function batchBalance(batch: PreparedBatch, logs: LogEntry[]) {
   return { numerator, servings: weight ? numerator.div(weight) : numerator, grams: weight ? numerator.div(servings) : null, weight, totalServings: servings };
 }
 export function assertBatchCapacity(batches: PreparedBatch[], logs: LogEntry[]) {
+  if (logs.some(log => log.batchRecipe && (!log.preparedBatchId || log.snapshot.kind !== 'recipe'))) throw new Error('A batch correction needs its original saved portion.');
   const ids = new Set(batches.map(batch => batch.id));
   if (logs.some(log => log.preparedBatchId && !ids.has(log.preparedBatchId))) throw new Error('The original saved batch is missing.');
   for (const batch of batches) if (batchBalance(batch, logs).numerator.lt(0)) throw new Error('This portion exceeds the amount remaining in the batch.');

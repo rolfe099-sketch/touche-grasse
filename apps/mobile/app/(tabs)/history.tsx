@@ -25,6 +25,8 @@ import { Diary } from '../../src/ui/Diary';
 import { ChartPoint, IntakeChart } from '../../src/ui/IntakeChart';
 
 import { Reveal } from '../../src/ui/Motion';
+import { WeightPanel, WeeklySummary } from '../../src/ui/WeightPanel';
+import { MealCorrectionHistory } from '../../src/ui/MealEditor';
 import { DayCompletion } from '../../src/ui/DayCompletion';
 import { TargetSummary } from '../../src/ui/Targets';
 import { targetOn } from '../../src/domain/targets';
@@ -35,7 +37,7 @@ const unknown: Nutrition = { kcal: null, protein: null, carbohydrate: null, fat:
 
 export default function History() {
 
-  const app = useApp(), params = useLocalSearchParams<{ date?: string; scope?: Scope }>();
+  const app = useApp(), params = useLocalSearchParams<{ date?: string; scope?: Scope; view?: string }>();
 
   const validScope = (value?: string): value is Scope => ['day', 'week', 'month', 'all'].includes(value ?? '');
 
@@ -43,6 +45,8 @@ export default function History() {
 
   const [date, setDate] = useState(() => { try { return params.date ? localDate(params.date) : new Date(); } catch { return new Date(); } });
 
+  const [view, setView] = useState<'intake' | 'weight'>(params.view === 'weight' ? 'weight' : 'intake');
+  useEffect(() => { if (params.view === 'weight') setView('weight'); }, [params.view]);
   const [completeOnly, setCompleteOnly] = useState(true);
   const [picker, setPicker] = useState(false), [metric, setMetric] = useState<keyof Nutrition>('kcal');
 
@@ -79,6 +83,7 @@ export default function History() {
 
   return <Screen support testID="history-screen" title="History" trailing={<IconButton name="calendar" label="Choose history date" onPress={() => setPicker(true)} />}>
 
+    <View style={{ flexDirection: 'row', marginBottom: 6 }}><SegmentButton label="Intake" selected={view === 'intake'} onPress={() => { setView('intake'); router.setParams({ view: undefined }); }} /><SegmentButton label="Weight" selected={view === 'weight'} onPress={() => { setView('weight'); router.setParams({ view: 'weight' }); }} /></View>
     <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 12, padding: 4, marginBottom: 15 }}>
 
       {(['day', 'week', 'month', 'all'] as const).map(value => <SegmentButton key={value} label={t(value)} selected={scope === value} onPress={() => setScope(value)} />)}
@@ -95,8 +100,9 @@ export default function History() {
 
     </View>
 
-    {scope !== 'day' && <View style={{ flexDirection: 'row', marginTop: 8 }}><SegmentButton label="Complete days" selected={completeOnly} onPress={() => setCompleteOnly(true)} /><SegmentButton label="All recorded days" selected={!completeOnly} onPress={() => setCompleteOnly(false)} /></View>}
-    <Reveal trigger={`${scope}:${title}`}>
+    {view === 'intake' && scope !== 'day' && <View style={{ flexDirection: 'row', marginTop: 8 }}><SegmentButton label="Complete days" selected={completeOnly} onPress={() => setCompleteOnly(true)} /><SegmentButton label="All recorded days" selected={!completeOnly} onPress={() => setCompleteOnly(false)} /></View>}
+    {view === 'weight' && <WeightPanel key={`${scope}:${dayKey(date)}`} date={date} scope={scope} onDateSaved={setDate} />}
+    {view === 'intake' && <Reveal trigger={`${scope}:${title}`}>
 
       {scope === 'day' && <>
 
@@ -104,6 +110,7 @@ export default function History() {
 
         <NutritionView value={day?.nutrition ?? unknown} large empty={!day} />
         <DayCompletion date={dayKey(date)} />
+        <MealCorrectionHistory date={dayKey(date)} />
         <TargetSummary change={targetOn(app.repo.targets, dayKey(date))} />
 
         {day ? <Diary entries={day.entries} /> : <View style={{ paddingVertical: 20, borderTopWidth: 1, borderColor: colors.line, gap: 10 }}><Text style={{ fontSize: 19, fontWeight: '600' }}>{dayKey(date) < dayKey(new Date(app.repo.profile.firstUsedAt)) ? 'Before your tracking began' : 'No food recorded on this day'}</Text><Text style={styles.subtitle}>An empty diary tells us nothing about what you ate. It is excluded from intake averages.</Text></View>}
@@ -120,6 +127,7 @@ export default function History() {
 
         {scope === 'month' && <View style={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line, paddingTop: 8, paddingBottom: 13 }}><CalendarGrid month={date} selected={date} index={index} firstUsedAt={app.repo.profile.firstUsedAt} onSelect={selectDay} /><Text style={{ fontSize: 12, color: colors.secondary, marginTop: 8 }}>Shaded days are recorded or reviewed. Tap a date to open its diary.</Text></View>}
 
+        {scope === 'week' && <WeeklySummary index={index} date={date} />}
         <Section title="Daily intake" />
 
         <IntakeChart points={points} metric={metric} onMetric={setMetric} onOpen={key => selectDay(localDate(key))} />
@@ -154,7 +162,7 @@ export default function History() {
 
       </>}
 
-    </Reveal>
+    </Reveal>}
 
     <View style={{ marginTop: 14, flexDirection: 'row', justifyContent: 'space-between' }}><TextButton label="Back to today" onPress={() => { setDate(new Date()); setScope('day'); }} /><Text style={{ alignSelf: 'center', color: colors.secondary, fontSize: 11 }}>Stored snapshots · local time</Text></View>
 

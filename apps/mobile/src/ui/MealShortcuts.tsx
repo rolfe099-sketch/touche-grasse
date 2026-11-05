@@ -38,6 +38,7 @@ export function MealShortcuts({ library = false, query = '', onLogged }: { libra
         </View>
         {library && !item.deletedAt && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <TextButton label={item.pinned ? 'Unpin' : 'Pin to Today'} accessibilityLabel={`${item.pinned ? 'Unpin' : 'Pin'} shortcut ${item.name}`} disabled={app.busy} onPress={() => void app.run(() => repo.changeShortcut(item.id, { pinned: !item.pinned }))} />
+          <TextButton label="Edit foods" accessibilityLabel={`Edit foods in ${item.name}`} disabled={app.busy || !!repo.quickEntry.repeatReview || !!repo.quickEntry.mealEdit} onPress={() => void app.run(() => repo.startMealEdit({ shortcutId: item.id })).then(ok => { if (ok) router.push('/entry'); })} />
           <TextButton label="Rename" accessibilityLabel={`Rename shortcut ${item.name}`} onPress={() => { setEditing(editing === item.id ? undefined : item.id); setName(item.name); }} />
           <IconButton name="trash" destructive label={`Delete shortcut ${item.name}`} disabled={app.busy} onPress={() => void app.run(() => repo.changeShortcut(item.id, { deleted: true }), 'Shortcut deleted · restore it under Deleted')} />
         </View>}

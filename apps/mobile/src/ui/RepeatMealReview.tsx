@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, usePathname } from 'expo-router';
 import { display, logName } from '../domain/model';
 import { repeatAvailability, reviewRepeatedMeal } from '../domain/repeatMeal';
 import { batchBalance } from '../domain/portions';
@@ -24,6 +24,7 @@ export function RepeatMealReview({ onLogged }: { onLogged?: () => void }) {
 
 function RepeatEditor({ onLogged }: { onLogged?: () => void }) {
   const app = useApp(), review = app.repo.quickEntry.repeatReview!;
+  const pathname = usePathname();
   const [amounts, setAmounts] = useState(review.amounts), [error, setError] = useState('');
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -44,6 +45,7 @@ function RepeatEditor({ onLogged }: { onLogged?: () => void }) {
     <View testID="repeat-totals" style={{ paddingVertical: 8, gap: 3 }}><Text style={{ fontSize: 15, fontWeight: '600' }}>{progress.valid ? 'Meal total' : 'Resolved subtotal'} · {display(progress.nutrition.kcal, 0)} kcal</Text><Text style={{ color: colors.secondary, fontSize: 12 }}>Protein {display(progress.nutrition.protein)} g · Carbs {display(progress.nutrition.carbohydrate)} g · Fat {display(progress.nutrition.fat)} g · Fiber {display(progress.nutrition.fiber)} g</Text></View>
     {!!error && <Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 12, marginBottom: 6 }}>{error}</Text>}
     {!!availabilityError && <Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 12, marginBottom: 6 }}>{availabilityError}</Text>}
+    {review.shortcutId && <TextButton label="Edit foods" disabled={app.busy || !progress.valid} onPress={() => void app.run(() => app.repo.editRepeatFoods(review.id)).then(ok => { if (ok && pathname !== '/entry') router.push('/entry'); })} />}
     {review.shortcutId && <TextButton label="Update saved amounts" disabled={app.busy || !progress.valid || !app.repo.shortcuts.some(item => item.id === review.shortcutId && !item.deletedAt)} onPress={() => void app.run(() => { const shortcut = app.repo.shortcuts.find(item => item.id === review.shortcutId)!; return app.repo.saveShortcut(shortcut.name, progress.rows.map(row => ({ ...row.entry, snapshot: row.snapshot!, nutrition: row.nutrition! })), shortcut.id); }, 'Saved amounts updated')} />}
     <Button label="Log adjusted meal today" primary disabled={app.busy || !progress.valid || !!availabilityError} onPress={() => void app.run(async () => { await app.repo.saveRepeatAmounts(review.id, amounts); await app.repo.logRepeatReview(review.id); }, 'Adjusted meal logged').then(ok => { if (ok) onLogged?.(); })} />
   </View>;

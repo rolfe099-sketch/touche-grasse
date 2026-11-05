@@ -33,6 +33,15 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  it('retains audited meal corrections, editor drafts, weight history and correction Undo in the real adapter', async () => {
+    const storage = await adapter(), repo = await setup(storage); await repo.logDraft(draftFor()); const original = structuredClone(repo.logs);
+    await repo.startMealEdit(repo.logs.map(entry => entry.id)); const edit = structuredClone(repo.quickEntry.mealEdit!); edit.rows[0].amount = '15'; await repo.saveMealEditDraft(edit);
+    const editing = await setup(storage); expect(editing.quickEntry.mealEdit?.rows[0].amount).toBe('15'); await editing.commitMealEdit(edit.id);
+    await editing.saveWeighIn('2026-10-05', '80', 'kg', new Date('2026-10-05T12:00:00')); await editing.saveWeightDraft({ date: '2026-10-06', amount: '80,', unit: 'kg' });
+    const reopened = await setup(storage); expect(reopened.mealCorrections[0].previous).toEqual(original); expect(reopened.undoLabel).toBe('Undo meal correction'); expect(reopened.weighIns[0].kg).toBe('80'); expect(reopened.quickEntry.weightDraft?.amount).toBe('80,');
+    await reopened.undoLast(); expect(reopened.logs).toEqual(original);
+    const restored = await setup(await adapter()); await restored.restoreJSON(await reopened.exportJSON()); expect(restored.mealCorrections).toEqual(reopened.mealCorrections); expect(restored.weighIns).toEqual(reopened.weighIns); await restored.close(); await reopened.close();
+  });
   it('persists named shortcuts, adjusted amounts, library archives and reviewed days in the real adapter', async () => {
     const storage = await adapter(), repo = await setup(storage), at = new Date('2026-10-05T12:00:00');
     const draft = draftFor(), shortcut = await repo.saveDraftShortcut('My breakfast', draft);

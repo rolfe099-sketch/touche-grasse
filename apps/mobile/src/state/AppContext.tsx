@@ -11,6 +11,8 @@ import { colors, serif } from '../ui/theme';
 import { RecoveryMeta, RecoveryService } from '../domain/recovery';
 import { openRecoveryPort } from '../platform/recovery';
 import { LabelForm } from '../domain/nutritionLabel';
+import { MealEdit } from '../domain/mealEditor';
+import { WeightDraft } from '../domain/weight';
 
 type State = { repo: Repository; revision: number; draft: Draft; setDraft: (draft: Draft) => void;
   run: (action: () => Promise<unknown>, success?: string, syncDraft?: boolean) => Promise<boolean>;
@@ -18,6 +20,8 @@ type State = { repo: Repository; revision: number; draft: Draft; setDraft: (draf
   recovery?: RecoveryService; recoveryRevision: number; recoveryError: string | null;
   saveRecovery: (reason?: RecoveryMeta['reason']) => Promise<RecoveryMeta | null>;
   saveRepeatAmounts: (reviewId: string, amounts: string[]) => Promise<void>;
+  saveMealEditDraft: (edit: MealEdit) => Promise<void>;
+  saveWeightDraft: (draft: WeightDraft | null) => Promise<void>;
   saveLabelDraft: (key: string, form: LabelForm | null) => Promise<void>;
   restoreBackup: (json: string, recoverMissing?: boolean) => Promise<void> };
 const Context = createContext<State | null>(null);
@@ -68,12 +72,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const run: State['run'] = async (action, success, syncDraft = false) => {
     if (locked.current) return false;
     locked.current = true; setBusy(true); setError(null);
-    const previousUndo = JSON.stringify([repo.undo, repo.isDeletionUndo]);
+    const previousUndo = repo.undoToken;
     try {
       await action();
       if (syncDraft) updateDraft(repo.draft);
       setRevision(v => v + 1);
-      const undoChanged = previousUndo !== JSON.stringify([repo.undo, repo.isDeletionUndo]);
+      const undoChanged = previousUndo !== repo.undoToken;
       if (success) { setNotice(success); setNoticeUndo(undoChanged && !!repo.undo.length); if (Platform.OS === 'ios') void Haptics.selectionAsync().catch(() => undefined); }
       else if (undoChanged) setNoticeUndo(false);
       return true;
@@ -86,6 +90,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     catch (reason) { setRecoveryError('The latest recovery copy could not be saved. Earlier copies are kept.'); throw reason; }
   };
   return <Context.Provider value={{ repo, draft, revision, busy, error, notice, noticeUndo, run,
+    async saveMealEditDraft(edit) { await repo.saveMealEditDraft(edit); setRevision(value => value + 1); },
+    async saveWeightDraft(draft) { await repo.saveWeightDraft(draft); setRevision(value => value + 1); },
     async saveLabelDraft(key, form) { await repo.saveLabelDraft(key, form); setRevision(value => value + 1); },
     async saveRepeatAmounts(reviewId, amounts) {
       try { await repo.saveRepeatAmounts(reviewId, amounts); setRevision(value => value + 1); }

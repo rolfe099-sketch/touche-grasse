@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { dayKey, display, logName, logQuantity, meals, parseAmount, Unit } from '../src/domain/model';
@@ -21,6 +21,14 @@ export default function LogDetails() {
   const [date, setDate] = useState(entry ? dayKey(new Date(entry.recordedAt)) : dayKey(new Date()));
   const originalTime = entry ? new Date(entry.recordedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '12:00';
   const [time, setTime] = useState(originalTime), [audit, setAudit] = useState(false);
+  useEffect(() => {
+    if (!entry) return;
+    const value = entry.snapshot;
+    setQuantity(value.kind === 'food' ? value.ingredient.quantity : value.quantity);
+    setUnit(value.kind === 'food' ? value.ingredient.unit : value.unit);
+    setMeal(entry.meal); setDate(dayKey(new Date(entry.recordedAt)));
+    setTime(new Date(entry.recordedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+  }, [entry]);
   if (!entry || !snapshot) return <Screen title="Entry unavailable" back><Text style={styles.body}>This entry may have been deleted or undone. Your other records are still here.</Text></Screen>;
   async function save() {
     const ok = await app.run(async () => {
@@ -38,6 +46,7 @@ export default function LogDetails() {
     <NutritionView value={entry.nutrition} />
     <SaveMealShortcut entries={[entry]} />
     <TextButton label="Repeat with changes" disabled={app.busy || !!app.repo.quickEntry.repeatReview} onPress={() => void app.run(() => app.repo.startRepeatReview([entry.id])).then(ok => { if (ok) router.push('/entry'); })} />
+    <TextButton label="Edit ingredients" disabled={app.busy || !!app.repo.quickEntry.mealEdit || !!app.repo.quickEntry.repeatReview} onPress={() => void app.run(() => app.repo.startMealEdit([entry.id])).then(ok => { if (ok) router.push('/entry'); })} />
     <Section title="Correct this entry" />
     <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-end' }}><View style={{ flex: 1 }}><Field label="Logged amount" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" /></View><View style={{ flexDirection: 'row', gap: 5, marginBottom: 14 }}>{(snapshot.kind === 'recipe' ? ['servings', 'g'] as const : ['g', 'kg', 'ml', 'l'] as const).map(value => <Button key={value} label={value} compact selected={unit === value} onPress={() => setUnit(value)} />)}</View></View>
     <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ flex: 1 }}><Field label="Date (YYYY-MM-DD)" value={date} onChangeText={setDate} /></View><View style={{ width: 92 }}><Field label="Time (HH:MM)" value={time} onChangeText={setTime} /></View></View>

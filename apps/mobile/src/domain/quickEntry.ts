@@ -4,6 +4,8 @@ import { FoodIndex, normalize } from './search';
 import { cookingRecordAllowed, preparationNeedsChoice } from './foodLanguage';
 import { labelFormSchema } from './nutritionLabel';
 import { repeatReviewSchema } from './repeatMeal';
+import { mealEditSchema } from './mealEditor';
+import { weightDraftSchema } from './weight';
 
 // References only: nutrients always come from the current verified Food record.
 export const quickEntrySchema = z.object({
@@ -11,6 +13,9 @@ export const quickEntrySchema = z.object({
   favorites: z.array(z.string().max(200)).max(20000),
   entryMethod: z.enum(['text', 'voice', 'scan']).optional(),
   repeatReview: repeatReviewSchema.optional(),
+  mealEdit: mealEditSchema.optional(),
+  weightUnit: z.enum(['kg', 'lb']).optional(),
+  weightDraft: weightDraftSchema.nullable().optional(),
   libraryHidden: z.record(z.string().max(220), z.boolean()).refine(value => Object.keys(value).length <= 30000, 'Too many library archive changes.').optional(),
   labelDrafts: z.record(z.string().max(500), labelFormSchema).refine(value => Object.keys(value).length <= 20, 'Finish or discard an earlier label draft first.').optional(),
 });

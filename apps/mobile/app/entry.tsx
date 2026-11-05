@@ -2,6 +2,7 @@ import { Text, TextInput } from '../src/ui/Text';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput as NativeInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { MealEditor } from '../src/ui/MealEditor';
 import { SaveMealShortcut } from '../src/ui/MealShortcuts';
 import { display, Food, lineIngredient, meals, Recipe, Unit } from '../src/domain/model';
 import { editLiveLine, liveTextIsCurrent, matchIngredient, mealProgress, recentMealBatches, updateLiveText } from '../src/domain/quickEntry';
@@ -82,6 +83,7 @@ export default function Entry() {
       try { setDraft(updateLiveText(draft.text, draft, repo.index, repo.quickEntry, repo.id)); } catch { /* Keep source text for correction, including older parser drafts. */ }
     }
   }, [draft, repo, setDraft]);
+  if (repo.quickEntry.mealEdit) return <EntryFrame><Screen support title="Edit meal" back><MealEditor key={repo.quickEntry.mealEdit.id} onSaved={() => router.canGoBack() ? router.back() : router.replace('/')} /></Screen></EntryFrame>;
   if (repo.quickEntry.repeatReview) return <EntryFrame><Screen keyboardInsets={false} support title="Quick Log" back><LabelDraftResume reviews={labelReviews} disabled={busy} /><RepeatMealReview onLogged={() => router.dismissTo('/')} /></Screen></EntryFrame>;
   const splitting = draft.splitPlan;
   const footer = !!draft.lines.length && !(splitting && progress.valid) && <>
