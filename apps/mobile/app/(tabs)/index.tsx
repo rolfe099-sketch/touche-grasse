@@ -61,7 +61,7 @@ export default function Today() {
     <Diary entries={logs} compact />
     <DayCompletion date={dayKey(date)} />
     <MealCorrectionHistory date={dayKey(date)} />
-    <TextButton label="Log weight" onPress={() => router.push({ pathname: '/history', params: { view: 'weight', date: dayKey(date), scope: 'week' } })} />
+    <TextButton label="Log weight" onPress={() => router.push({ pathname: '/history', params: { view: 'weight', editWeight: '1', date: dayKey(date), scope: 'week' } })} />
     {!!recent.length && !logs.length && <><Section title="Recent food"><TextButton label="History →" onPress={() => router.push('/history')} /></Section>{recent.map(log => <View key={log.id} testID="recent-row" style={[styles.row, { paddingVertical: 8 }]}><View style={{ flex: 1 }}><Text numberOfLines={1} style={[styles.foodName, { fontSize: 14 }]}>{logName(log)}</Text><Text style={{ fontSize: 12, color: colors.secondary }}>{logQuantity(log)} · {display(log.nutrition.kcal, 0)} kcal</Text></View><IconButton name="repeat" label={`Log ${logName(log)} again`} disabled={busy} onPress={() => void run(() => repo.repeat(log), 'Logged for today')} /></View>)}</>}
     {!isToday && <TextButton label="Today" onPress={() => setDate(new Date())} />}
     <CalendarPicker visible={picker} selected={date} index={index} firstUsedAt={repo.profile.firstUsedAt} onSelect={setDate} onClose={() => setPicker(false)} />

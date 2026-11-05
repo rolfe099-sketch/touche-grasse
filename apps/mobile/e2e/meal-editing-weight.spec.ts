@@ -70,6 +70,10 @@ test('weight means, correction, reversible deletion and unfinished input persist
   await page.getByRole('button', { name: 'Log weight', exact: true }).click(); await page.getByRole('textbox', { name: 'Weight · kg', exact: true }).fill('78,'); const saved = await backup(page); expect(saved.quickEntry.weightDraft.amount).toBe('78,'); expect(saved.logs).toEqual(original.logs);
   await page.goto('/history?view=weight&scope=week&date=2026-11-05'); await page.reload(); await expect(page.getByRole('textbox', { name: 'Weight · kg', exact: true })).toHaveValue('78,');
   await page.getByRole('button', { name: 'Cancel weigh-in', exact: true }).click(); await expect(page.getByTestId('weight-editor')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Previous week', exact: true }).click(); await page.getByRole('button', { name: 'Lifetime', exact: true }).click();
+  await expect(page.getByTestId('weight-latest')).toHaveText('78.5 kg');
+  await page.getByRole('tab', { name: 'Today', exact: true }).click(); await page.getByRole('button', { name: 'Log weight', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Weight · kg', exact: true })).toHaveValue('78.5'); await expect(page.getByRole('textbox', { name: 'Weight · kg', exact: true })).toBeFocused();
 });
 
 test('weekly feedback uses complete days only and a feature-rich backup restores edits, weigh-ins and correction history', async ({ page, browser }) => {
