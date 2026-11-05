@@ -61,7 +61,8 @@ test('complete days exclude partial intake from averages, reopen on new food, an
   await page.getByRole('button', { name: 'Reopen day', exact: true }).click(); await expect(page.getByTestId('day-completion')).toContainText('Not marked complete');
   await page.goto('/settings'); const chooser = page.waitForEvent('filechooser'); await page.getByRole('button', { name: 'Choose a backup file', exact: true }).click();
   await (await chooser).setFiles({ name: 'isolated-reviewed-day.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(saved)) });
-  await expect(page.getByText(/2 diary entries · 0 recipes · 1 shortcuts · 1 reviewed days/)).toBeVisible();
+  const summary = page.getByTestId('backup-summary');
+  for (const value of ['2 diary entries', '0 recipes', '1 shortcut', '1 reviewed day']) await expect(summary).toContainText(value);
   await page.getByRole('button', { name: 'Confirm restore', exact: true }).click(); await expect(page.getByText('Backup restored', { exact: true }).filter({ visible: true })).toBeVisible();
   await page.goto(`/history?date=${dayKey(new Date())}&scope=week`); await expect(page.getByTestId('nutrition-kcal')).toHaveText('–');
   await page.getByRole('button', { name: 'All recorded days', exact: true }).click(); await expect(page.getByTestId('nutrition-kcal')).toHaveText('268'); await expect(page.getByText(/Partial days are included; these averages may understate intake/)).toBeVisible();
