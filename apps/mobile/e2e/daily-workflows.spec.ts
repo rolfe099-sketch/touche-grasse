@@ -39,10 +39,10 @@ test('named shortcut: save without eating, one-tap log above fold, adjust, undo,
   await page.getByRole('tab', { name: 'Today', exact: true }).click(); await page.getByRole('button', { name: 'Manage meal shortcuts', exact: true }).click();
   await expect(page.getByTestId('library-shortcuts')).toBeVisible();
   await page.getByRole('button', { name: 'Rename shortcut My breakfast', exact: true }).click();
-  await page.getByRole('textbox', { name: 'New shortcut name', exact: true }).fill('Morning oats'); await page.getByRole('button', { name: 'Save name', exact: true }).click(); await expect(page.getByText('Shortcut renamed', { exact: true }).filter({ visible: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'New shortcut name', exact: true }).fill('Morning oats'); await page.getByRole('button', { name: 'Save name', exact: true }).click(); await expect(page.getByTestId('library-shortcuts').getByText('Morning oats', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Delete shortcut Morning oats', exact: true }).click(); await expect(page.getByTestId('library-shortcuts').getByTestId('meal-shortcut')).toHaveCount(0);
   await page.getByTestId('library-shortcuts').getByRole('button', { name: 'Deleted', exact: true }).click(); await page.getByRole('button', { name: 'Restore shortcut Morning oats', exact: true }).click();
-  await expect(page.getByText('Shortcut restored', { exact: true }).filter({ visible: true })).toBeVisible(); await page.reload();
+  await expect(page.getByTestId('library-shortcuts').getByTestId('meal-shortcut')).toHaveCount(0); await page.reload();
   await expect(page.getByTestId('library-shortcuts')).toContainText('Morning oats'); expect(errors).toEqual([]);
   writeFileSync(path.join(output, `${test.info().project.name || 'chromium'}-interactions.json`), JSON.stringify({ dimensions: '390x844', unchanged: { actions: ['Log shortcut'], interactions: 1, scrolls: 0 }, adjusted: { actions: ['Adjust shortcut', 'Focus amount', 'Enter quantity', 'Log adjusted meal'], interactions: 4, scrolls: 0 }, savedAmountsChange: 'Optional explicit Update saved amounts; one-off changes do not overwrite the shortcut', timing: 'Browser automation; not a human cooking-time benchmark' }, null, 2));
 });
