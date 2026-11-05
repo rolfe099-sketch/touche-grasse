@@ -48,14 +48,14 @@ test('History carries its selected day while an existing draft requires an expli
   await page.goto(`/history?date=${key(-1)}&scope=day`); await page.getByTestId('universal-log').click();
   await page.getByTestId('quick-text').fill('10g olive oil'); await destination(page, 'Yesterday');
   const saved = await archive(page); expect(saved.draft.loggingDate).toBe(key(-1));
-  await page.reload(); await page.goto(`/history?date=${key(-2)}&scope=day`); await expect(page).toHaveURL(new RegExp(`date=${key(-2)}`));
+  await page.reload(); await page.goto(`/history?date=${key(-2)}&scope=day`); await expect(page).toHaveURL(url => url.pathname === '/history' && url.searchParams.get('date') === key(-2));
   await page.getByTestId('universal-log').click();
   const conflict = page.getByTestId('destination-conflict'); await expect(conflict).toBeVisible(); await expect(page.getByTestId('commit-food')).toBeDisabled();
   await expect(page.getByTestId('quantity-0')).toHaveValue('10');
   await conflict.getByRole('button', { name: 'Keep draft date', exact: true }).click(); await destination(page, 'Yesterday');
   await page.getByRole('button', { name: 'Back', exact: true }).click(); await expect(page).toHaveURL(/history/);
   await page.getByTestId('universal-log').click(); await conflict.getByRole('button', { name: `Use ${key(-2)}`, exact: true }).click();
-  await destination(page, key(-2)); await page.getByTestId('commit-food').click(); await expect(page).toHaveURL(new RegExp(`date=${key(-2)}`));
+  await destination(page, key(-2)); await page.getByTestId('commit-food').click(); await expect(page).toHaveURL(url => url.pathname === '/history' && url.searchParams.get('date') === key(-2));
   const logged = await archive(page); expect(logged.logs).toHaveLength(1); expect(dayKey(new Date(logged.logs[0].recordedAt))).toBe(key(-2)); expect(logged.logs[0].nutrition.kcal).toBe('89.2');
 });
 
@@ -72,7 +72,7 @@ test('inline calendar rejects future dates and stores a custom day and adjusted 
   await page.getByTestId('repeat-amount-0').fill('20');
   await expect(page.getByTestId('repeat-totals')).toContainText('178 kcal');
   await page.screenshot({ path: path.join(output, `${test.info().project.name || 'chromium'}-dated-repeat.png`) });
-  await page.getByRole('button', { name: `Log adjusted meal ${key(-3)}`, exact: true }).click(); await expect(page).toHaveURL(new RegExp(`date=${key(-3)}`));
+  await page.getByRole('button', { name: `Log adjusted meal ${key(-3)}`, exact: true }).click(); await expect(page).toHaveURL(url => url.pathname === '/history' && url.searchParams.get('date') === key(-3));
   const saved = await archive(page); expect(saved.logs).toHaveLength(2);
   const original = saved.logs.find((entry: { recordedAt: string }) => dayKey(new Date(entry.recordedAt)) === key(0));
   const repeated = saved.logs.find((entry: { recordedAt: string }) => dayKey(new Date(entry.recordedAt)) === key(-3));
@@ -90,6 +90,6 @@ test('typed natural-language destinations and speech use the same review; invali
   await destination(page, 'Yesterday · Dinner'); await expect(page.getByTestId('quantity-0')).toHaveValue('200');
   await page.getByRole('button', { name: 'Speak a command', exact: true }).click();
   await page.evaluate(() => (window as unknown as { deliverSpeech: (text: string) => void }).deliverSpeech('Set meal to breakfast then log this'));
-  await expect(page).toHaveURL(new RegExp(`date=${key(-1)}`));
+  await expect(page).toHaveURL(url => url.pathname === '/history' && url.searchParams.get('date') === key(-1));
   const saved = await archive(page); expect(saved.logs).toHaveLength(1); expect(saved.logs[0].meal).toBe('Frokost'); expect(dayKey(new Date(saved.logs[0].recordedAt))).toBe(key(-1)); expect(saved.logs[0].snapshot.ingredient.quantity).toBe('200');
 });
