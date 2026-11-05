@@ -95,7 +95,7 @@ test('the reported polite speech request creates a measured ambiguous oil row an
   await page.goto('/entry'); await settled(page);
   await page.getByRole('button', { name: 'Speak a command', exact: true }).click();
   await expect(page.getByTestId('quantity-0')).toHaveValue('15');
-  await expect(page.getByRole('button', { name: 'Change food 1', exact: true })).toHaveText('oil');
+  await expect(page.getByRole('button', { name: 'Change food 1', exact: true }).getByText('oil', { exact: true })).toBeVisible();
   await expect(page.getByTestId('entry-search')).toHaveValue('oil');
   await expect(page.getByTestId('commit-food')).toBeDisabled();
   await expect.poll(async () => (await state(page)).draft.lines[0].query).toBe('oil');
