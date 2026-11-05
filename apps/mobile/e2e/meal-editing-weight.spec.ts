@@ -38,7 +38,7 @@ test('shortcut product replacement, independent amounts, add/remove and saved re
   await page.getByRole('textbox', { name: 'Edit amount 3', exact: true }).fill('5'); await page.getByRole('button', { name: 'Remove food 2', exact: true }).click();
   await expect(page.getByTestId('edit-totals')).toContainText(display(total([foodNutrition(pasta, '150', 'g'), foodNutrition(oil, '5', 'g')]).kcal, 0));
   await page.screenshot({ path: path.join(output, `${test.info().project.name || 'chromium'}-shortcut-food-editor.png`) });
-  await page.getByRole('button', { name: 'Save shortcut changes', exact: true }).click(); await expect(page.getByTestId('library-shortcuts')).toBeVisible();
+  await page.getByRole('button', { name: 'Save shortcut changes', exact: true }).click(); await expect(page).toHaveURL(/\/recipes(?:\?.*)?$/); await expect(page.getByTestId('library-shortcuts')).toBeVisible();
   const saved = await backup(page); expect(saved.logs).toEqual(original.logs); expect(saved.draft).toEqual(original.draft); expect(saved.shortcuts[0].entries).toHaveLength(2); expect(saved.shortcuts[0].entries[0].snapshot.ingredient.food.id).toBe(pasta.id);
   await page.goto('/'); await page.getByRole('button', { name: 'Log shortcut Lunch', exact: true }).click();
   await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText(display(total([...original.logs.map(entry => entry.nutrition), ...saved.shortcuts[0].entries.map((entry: LogEntry) => entry.nutrition)]).kcal, 0));
@@ -52,7 +52,7 @@ test('correct a logged saved serving, audit its original ingredients, undo and l
   await expect(page.getByText(/Whole recipe · 6 servings/)).toBeVisible();
   await page.getByRole('button', { name: 'Change ingredient 1.1', exact: true }).click(); await page.getByRole('textbox', { name: 'Find a food', exact: true }).fill('pasta'); await page.getByRole('button', { name: `Choose replacement ${pasta.name}`, exact: true }).click();
   await page.getByRole('textbox', { name: 'Ingredient amount 1.1', exact: true }).fill('300'); await expect(page.getByRole('textbox', { name: 'Ingredient amount 1.2', exact: true })).toHaveValue('60');
-  await page.getByRole('button', { name: 'Save meal correction', exact: true }).click(); await expect(page.getByTestId('log-screen')).toBeVisible();
+  await page.getByRole('button', { name: 'Save meal correction', exact: true }).click(); await expect(page).toHaveURL(/\/log\?/); await expect(page.getByTestId('log-screen')).toBeVisible();
   const corrected = await backup(page); expect(corrected.logs[0].batchRecipe).toEqual(recipe); expect(corrected.preparedBatches[0].recipe).toEqual(recipe); expect(corrected.mealCorrections[0].previous[0]).toEqual(portion);
   await page.goto('/'); await expect(page.getByTestId('today-portions')).toContainText('5 servings left'); await page.getByRole('button', { name: 'Undo meal correction', exact: true }).click();
   await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText(display(portion.nutrition.kcal, 0));
@@ -82,6 +82,7 @@ test('weekly feedback uses complete days only and a feature-rich backup restores
   logs.push(entry(oil, '100', 'partial', today)); await restore(page, { ...fixture(), logs, dayReviews: reviews });
   await page.goto('/history?scope=week&date=2026-11-05'); await expect(page.getByTestId('weekly-summary')).toContainText('3 complete days this week · 3 last week'); await expect(page.getByTestId('weekly-summary')).toContainText('Energy: 89 kcal / complete day (-89 vs last week)');
   await page.goto('/log?id=partial'); await page.getByRole('button', { name: 'Edit ingredients', exact: true }).click(); await page.getByRole('textbox', { name: 'Edit amount 1', exact: true }).fill('150'); await page.getByRole('button', { name: 'Save meal correction', exact: true }).click(); await expect(page.getByTestId('log-screen')).toBeVisible();
+  await expect(page).toHaveURL(/\/log\?/);
   await expect(page.getByRole('textbox', { name: 'Logged amount', exact: true })).toHaveValue('150');
   await page.goto('/history?view=weight&scope=week&date=2026-11-05'); await page.getByRole('button', { name: 'Log weight', exact: true }).click(); await page.getByRole('textbox', { name: 'Weight · kg', exact: true }).fill('80'); await page.getByRole('button', { name: 'Save weigh-in', exact: true }).click(); await expect(page.getByTestId('weight-latest')).toHaveText('80 kg');
   await page.getByRole('button', { name: 'Log weight', exact: true }).click(); await page.getByRole('textbox', { name: 'Weight · kg', exact: true }).fill('80,');
@@ -90,7 +91,8 @@ test('weekly feedback uses complete days only and a feature-rich backup restores
   const saved = await backup(page); expect(saved.weighIns).toHaveLength(1); expect(saved.mealCorrections).toHaveLength(1); expect(saved.quickEntry.weightDraft.amount).toBe('80,');
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } }), fresh = await context.newPage(); await fresh.clock.setFixedTime(new Date('2026-11-05T12:00:00Z')); await restore(fresh, saved); await fresh.goto('/entry');
   await expect(fresh.getByRole('textbox', { name: 'Edit amount 1', exact: true })).toHaveValue('15,'); await expect(fresh.getByRole('button', { name: 'Save shortcut changes', exact: true })).toBeDisabled();
-  await fresh.getByRole('button', { name: 'Discard edit', exact: true }).click(); await fresh.goto('/history?view=weight&date=2026-11-05&scope=week'); await expect(fresh.getByRole('textbox', { name: 'Weight · kg', exact: true })).toHaveValue('80,');
+  await fresh.getByRole('button', { name: 'Discard edit', exact: true }).click(); await expect(fresh.getByTestId('meal-editor')).toHaveCount(0); await expect(fresh).not.toHaveURL(/\/entry(?:\?.*)?$/);
+  await fresh.goto('/history?view=weight&date=2026-11-05&scope=week'); await expect(fresh.getByRole('textbox', { name: 'Weight · kg', exact: true })).toHaveValue('80,');
   const recovered = await backup(fresh), byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
   expect(recovered.logs.sort(byId)).toEqual(saved.logs.sort(byId)); expect(recovered.mealCorrections).toEqual(saved.mealCorrections); expect(recovered.weighIns).toEqual(saved.weighIns);
   await context.close();
