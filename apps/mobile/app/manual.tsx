@@ -7,6 +7,7 @@ import { useApp } from '../src/state/AppContext';
 import { Button, Field, Screen, styles, TextButton } from '../src/ui/components';
 import { applyLabelColumn, canMergeLabelColumn, mergeLabelColumn, receiveLabelScan, LabelCandidate, LabelForm, reviewedLabelFood, upgradeLabelForm } from '../src/domain/nutritionLabel';
 import { LabelPhotoInput } from '../src/ui/LabelPhotoInput';
+import { LabelNutritionReview } from '../src/ui/LabelNutritionReview';
 import { colors } from '../src/ui/theme';
 export default function Manual() {
   const app = useApp(); const params = useLocalSearchParams<{ barcode?: string; edit?: string; line?: string; capture?: string }>();
@@ -16,14 +17,16 @@ export default function Manual() {
   const [scanning, setScanning] = useState(false), [expanded, setExpanded] = useState(false), [draftError, setDraftError] = useState('');
   const saving = useRef(false), lastSaved = useRef(JSON.stringify(form)), requested = useRef(JSON.stringify(form));
   const [retry, setRetry] = useState(0);
+  const [reviewPhoto, setReviewPhoto] = useState<{ uri: string; scannedAt: string }>();
   useEffect(() => { const upgraded = upgradeLabelForm(form); if (upgraded !== form) setForm(upgraded); }, [form]);
   useEffect(() => {
     const serialized = JSON.stringify(form); if (saving.current || serialized === lastSaved.current || serialized === requested.current) return;
     requested.current = serialized;
     void app.saveLabelDraft(key, form).then(() => { lastSaved.current = serialized; if (requested.current === serialized) setDraftError(''); }).catch(() => { if (requested.current === serialized) setDraftError('This label draft could not be saved. Keep it open and retry.'); });
   }, [form, key, app, retry]);
-  function read(candidate: LabelCandidate) {
+  function read(candidate: LabelCandidate, photo?: string) {
     setForm(current => receiveLabelScan(current, candidate));
+    setReviewPhoto(photo ? { uri: photo, scannedAt: candidate.scannedAt } : undefined);
   }
   function editValue(key: typeof nutrients[number], value: string) { setForm(current => ({ ...current, values: { ...current.values, [key]: value }, edited: [...new Set([...(current.edited ?? []), key])] })); }
   const selected = form.scan && form.column !== undefined ? form.scan.columns[form.column] : undefined;
@@ -44,7 +47,7 @@ export default function Manual() {
     if (ok) router.dismissTo(existing && !params.line ? '/recipes' : '/entry');
   }
   return <Screen title={existing ? 'Edit label' : 'Add a food'} eyebrow="Label values" back>
-    <LabelPhotoInput onRead={read} onBusy={setScanning} disabled={app.busy} hasReview={!!form.scan || !!form.rescan} captureIntent={params.capture} onCaptureConsumed={() => router.setParams({ capture: undefined })} />
+    <LabelPhotoInput onRead={read} onPhoto={() => setReviewPhoto(undefined)} onBusy={setScanning} disabled={app.busy} hasReview={!!form.scan || !!form.rescan} captureIntent={params.capture} onCaptureConsumed={() => router.setParams({ capture: undefined })} />
     {form.rescan && <View testID="label-rescan-review" style={{ gap: 5, marginBottom: 12 }}>
       <Text style={{ fontSize: 14, fontWeight: '600' }}>New photo · your values are kept</Text>
       {!form.rescan.columns.length && <Text style={{ color: colors.secondary, fontSize: 12 }}>No reference column read. Try a closer photo or keep your current values.</Text>}
@@ -67,7 +70,10 @@ export default function Manual() {
     <Field compact label="Food name" value={form.name} onChangeText={name => setForm({ ...form, name })} placeholder="Name on the package" maxLength={300} />
     <Field compact label="Barcode (optional)" value={form.barcode} onChangeText={barcode => setForm({ ...form, barcode })} keyboardType="number-pad" maxLength={30} editable={existing?.provenance.source !== 'openFoodFacts'} />
     <View style={{ flexDirection: 'row', gap: 8, marginVertical: 8 }}><Button compact label="Per 100 g" selected={form.basis === 'g'} disabled={!!form.scan} onPress={() => setForm({ ...form, basis: 'g', amount: form.basis === 'g' ? form.amount : '' })} /><Button compact label="Per 100 ml" selected={form.basis === 'ml'} disabled={!!form.scan} onPress={() => setForm({ ...form, basis: 'ml', amount: form.basis === 'ml' ? form.amount : '' })} /></View>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>{nutrients.map((key, index) => <View key={key} style={{ width: '48%' }}><Field compact label={['Energy · kcal', 'Protein · g', 'Carbs · g', 'Fat · g', 'Fiber · g'][index]} value={form.values[key]} onChangeText={value => editValue(key, value)} keyboardType="decimal-pad" selectTextOnFocus maxLength={100} placeholder={selected?.suggestions?.[key] ? "Confirm unit" : "Unknown"} />{selected?.nutrition[key] != null && form.values[key] !== selected.nutrition[key] && <TextButton label={`Use photo: ${selected.nutrition[key]} ${key === "kcal" ? "kcal" : "g"}`} accessibilityLabel={`Use new reading for ${key}`} disabled={app.busy || scanning} onPress={() => editValue(key, selected.nutrition[key]!)} />}{selected?.issues[key] && !form.values[key] && <Text style={{ fontSize: 11, color: colors.error, marginBottom: 4 }}>{selected.issues[key]}</Text>}{selected?.issues[key] && !form.values[key] && selected.evidence[key] && <Text selectable style={{ fontSize: 11, color: colors.secondary, marginBottom: 6 }}>Read: {selected.evidence[key]}</Text>}{selected?.suggestions?.[key] && !form.values[key] && <TextButton label={selected.amount === "100" ? `Confirm ${selected.suggestions[key]} g` : "Confirm grams"} accessibilityLabel={`Confirm label ${key} in grams`} onPress={() => editValue(key, selected.suggestions![key])} />}</View>)}{!existing && <View style={{ width: '48%' }}><Field compact label={`Amount to add · ${form.basis}`} value={form.amount} onChangeText={amount => setForm({ ...form, amount })} keyboardType="decimal-pad" selectTextOnFocus maxLength={100} /></View>}</View>
+    <LabelNutritionReview values={form.values} selected={selected} photo={!form.rescan && form.scan?.scannedAt === reviewPhoto?.scannedAt ? reviewPhoto?.uri : undefined} disabled={app.busy} onChange={editValue}>
+    {!existing && <Field compact label={`Amount to add · ${form.basis}`} value={form.amount} onChangeText={amount => setForm({ ...form, amount })} keyboardType="decimal-pad" selectTextOnFocus maxLength={100} editable={!app.busy} />}
+    </LabelNutritionReview>
+
     <Text style={[styles.subtitle, { marginBottom: 10, fontSize: 12 }]}>Review every value against the label. Blank means unknown; 0 means the label states zero.</Text>
     {!!validation && <Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 12, marginBottom: 6 }}>{validation}</Text>}
     {!!draftError && <View><Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 12 }}>{draftError}</Text><TextButton label="Retry saving label draft" onPress={() => { requested.current = lastSaved.current; setRetry(value => value + 1); }} /></View>}

@@ -58,5 +58,6 @@ jobs:
             verification/meal-editing-weight
             verification/voice-scan-reliability
             verification/label-scanning
+            verification/label-capture
             apps/mobile/test-results
           retention-days: 7

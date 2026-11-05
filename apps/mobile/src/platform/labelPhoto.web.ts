@@ -1,5 +1,6 @@
 import { createWorker, PSM, Worker } from 'tesseract.js';
-import { LabelOCR, LabelPhoto, LabelPhotoSource } from './labelPhoto.types';
+import { LabelOCR, LabelPhoto, LabelPhotoSource, LabelPhotoTransform } from './labelPhoto.types';
+import { labelPixelCrop, rotatedSize } from '../domain/labelImage';
 import { labelDocumentSchema } from '../domain/nutritionLabel';
 export function pickLabelPhoto(source: LabelPhotoSource): Promise<LabelPhoto | null> {
   return new Promise((resolve, reject) => {
@@ -18,12 +19,29 @@ export function pickLabelPhoto(source: LabelPhotoSource): Promise<LabelPhoto | n
         const context = canvas.getContext('2d'); if (!context) throw new Error('Could not read this photo.'); context.drawImage(image, 0, 0, canvas.width, canvas.height);
         // Preserve small unit glyphs: JPEG recompression can turn a clear g into
         // an uncertain reading. Canvas PNG still removes EXIF and orientation.
-        const normalized = canvas.toDataURL('image/png'); canvas.width = 0; canvas.height = 0;
-        resolve({ uri: normalized, release: async () => undefined });
+        const normalized = canvas.toDataURL('image/png'), width = canvas.width, height = canvas.height; canvas.width = 0; canvas.height = 0;
+        resolve({ uri: normalized, width, height, release: async () => undefined });
       } catch (reason) { reject(reason); } finally { URL.revokeObjectURL(uri); }
     }; input.click();
   });
 }
+export const transformLabelPhoto: LabelPhotoTransform = async (photo, edit, signal) => {
+  const box = labelPixelCrop(photo, edit), size = rotatedSize(photo, edit.rotation);
+  if (signal.aborted) throw new Error('Label scan cancelled.');
+  const image = new Image(); image.src = photo.uri; await image.decode();
+  if (signal.aborted) throw new Error('Label scan cancelled.');
+  const rotated = document.createElement('canvas'), cropped = document.createElement('canvas');
+  try {
+    rotated.width = size.width; rotated.height = size.height;
+    const context = rotated.getContext('2d'); if (!context) throw new Error('Could not rotate the label photo.');
+    context.translate(size.width / 2, size.height / 2); context.rotate(edit.rotation * Math.PI / 180);
+    context.drawImage(image, -photo.width / 2, -photo.height / 2, photo.width, photo.height);
+    cropped.width = box.width; cropped.height = box.height;
+    const output = cropped.getContext('2d'); if (!output) throw new Error('Could not crop the label photo.');
+    output.drawImage(rotated, box.originX, box.originY, box.width, box.height, 0, 0, box.width, box.height);
+    return { uri: cropped.toDataURL('image/png'), width: box.width, height: box.height, release: async () => undefined };
+  } finally { rotated.width = 0; rotated.height = 0; cropped.width = 0; cropped.height = 0; }
+};
 export function createLabelOCR(): LabelOCR {
   return { available: typeof WebAssembly !== 'undefined', unavailable: 'This browser cannot run local label recognition. Enter the label below.', async recognize(uri, signal) {
     let worker: Worker | undefined;

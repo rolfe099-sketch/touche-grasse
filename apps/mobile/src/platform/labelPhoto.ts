@@ -4,7 +4,8 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'react-native';
 import type { OcrResult } from 'expo-ocr-kit';
-import { LabelOCR, LabelPhoto, LabelPhotoSource } from './labelPhoto.types';
+import { LabelOCR, LabelPhoto, LabelPhotoSource, LabelPhotoTransform } from './labelPhoto.types';
+import { labelPixelCrop } from '../domain/labelImage';
 import { labelDocumentSchema, parseNutritionLabel } from '../domain/nutritionLabel';
 import { labelTableCrop } from '../domain/labelCrop';
 export async function pickLabelPhoto(source: LabelPhotoSource): Promise<LabelPhoto | null> {
@@ -21,10 +22,27 @@ export async function pickLabelPhoto(source: LabelPhotoSource): Promise<LabelPho
     try {
       // Re-encoding normalizes orientation and removes EXIF before Vision sees it.
       const saved = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: .95 });
-      return { uri: saved.uri, release: async () => { if (FileSystem.cacheDirectory && saved.uri.startsWith(FileSystem.cacheDirectory)) await FileSystem.deleteAsync(saved.uri, { idempotent: true }); } };
+      return { uri: saved.uri, width: saved.width, height: saved.height, release: async () => { if (FileSystem.cacheDirectory && saved.uri.startsWith(FileSystem.cacheDirectory)) await FileSystem.deleteAsync(saved.uri, { idempotent: true }); } };
     } finally { rendered.release(); }
   } finally { context.release(); }
 }
+export const transformLabelPhoto: LabelPhotoTransform = async (photo, edit, signal) => {
+  const crop = labelPixelCrop(photo, edit);
+  if (signal.aborted) throw new Error('Label scan cancelled.');
+  const context = ImageManipulator.manipulate(photo.uri);
+  try {
+    if (edit.rotation) context.rotate(edit.rotation);
+    context.crop(crop);
+    const rendered = await context.renderAsync();
+    try {
+      if (signal.aborted) throw new Error('Label scan cancelled.');
+      const saved = await rendered.saveAsync({ format: SaveFormat.PNG });
+      return { uri: saved.uri, width: saved.width, height: saved.height, release: async () => {
+        if (FileSystem.cacheDirectory && saved.uri.startsWith(FileSystem.cacheDirectory)) await FileSystem.deleteAsync(saved.uri, { idempotent: true });
+      } };
+    } finally { rendered.release(); }
+  } finally { context.release(); }
+};
 export function createLabelOCR(): LabelOCR {
   const module = requireOptionalNativeModule<{ recognizeText(uri: string): Promise<OcrResult> }>('ExpoOcrKit');
   return { available: !!module, unavailable: 'Label scanning needs the updated development build. You can still enter the label below.', async recognize(uri, signal) {
