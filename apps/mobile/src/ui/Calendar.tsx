@@ -7,14 +7,14 @@ import { Button, Field, IconButton, styles } from './components';
 import { Text } from './Text';
 import { colors } from './theme';
 
-export function CalendarGrid({ month, selected, index, firstUsedAt, onSelect, maxDate, disabled, appearance }: { month: Date; selected: Date; index: HistoryIndex; firstUsedAt: string; onSelect: (date: Date) => void; maxDate?: string; disabled?: boolean; appearance?: 'entry' }) {
+export function CalendarGrid({ month, selected, index, firstUsedAt, onSelect, maxDate, disabled, appearance }: { month: Date; selected?: Date; index: HistoryIndex; firstUsedAt: string; onSelect: (date: Date) => void; maxDate?: string; disabled?: boolean; appearance?: 'entry' }) {
   const monthDays = daysInPeriod(month, 'month'), start = startOfWeek(monthDays[0]);
   const count = Math.ceil((((monthDays[0].getDay() + 6) % 7) + monthDays.length) / 7) * 7;
   return <View>
     <View style={{ flexDirection: 'row', marginBottom: 5 }}>{['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((name, i) => <Text key={i} style={{ width: `${100 / 7}%`, textAlign: 'center', fontSize: 11, fontWeight: '600', color: colors.secondary, paddingVertical: 7 }}>{name}</Text>)}</View>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
       {Array.from({ length: count }, (_, i) => addDays(start, i)).map(date => {
-        const key = dayKey(date), active = key === dayKey(selected), logged = index.byDay.get(key), outside = date.getMonth() !== month.getMonth();
+        const key = dayKey(date), active = !!selected && key === dayKey(selected), logged = index.byDay.get(key), outside = date.getMonth() !== month.getMonth();
         const before = key < dayKey(new Date(firstUsedAt));
         return <Pressable key={key} accessibilityRole="button" aria-pressed={active} accessibilityLabel={`${dateLabel(date)}, ${logged ? `${logged.entries.length} entries, ${logged.complete ? 'complete' : 'partial'}` : before ? 'before tracking began' : 'no entries'}`} disabled={disabled || !!(maxDate && key > maxDate)} accessibilityState={{ selected: active, disabled: disabled || !!(maxDate && key > maxDate) }} testID={`calendar-${key}`} onPress={() => onSelect(date)} style={({ pressed }) => ({ width: `${100 / 7}%`, minHeight: 45, alignItems: 'center', justifyContent: 'center', padding: 2, opacity: maxDate && key > maxDate ? .2 : pressed ? 0.6 : outside ? 0.35 : 1 })}>
           <View style={{ width: 36, height: 40, borderRadius: appearance === 'entry' ? 8 : 12, alignItems: 'center', justifyContent: 'center', gap: 2, backgroundColor: active ? appearance === 'entry' ? colors.primary : colors.ink : logged ? colors.selection : 'transparent', borderWidth: !active && key === dayKey(new Date()) ? 1 : 0, borderColor: colors.forrest }}>

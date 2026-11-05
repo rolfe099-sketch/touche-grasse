@@ -11,7 +11,7 @@ import { sameBarcode } from './barcode';
 import { makeRepeatReview, repeatReviewSchema, reviewRepeatedMeal } from './repeatMeal';
 import { LabelForm, labelFormSchema } from './nutritionLabel';
 import { DayReview, dayReviewSchema, daySignature, MealShortcut, mealShortcutSchema, validateShortcut } from './dailyWorkflows';
-import { MealEdit, mealEditSchema, makeMealEdit, MealCorrection, mealCorrectionSchema, reviewMealEdit, validateLogCalculation } from './mealEditor';
+import { MealEdit, mealEditSchema, makeMealEdit, MealCorrection, mealCorrectionSchema, reviewMealEdit, validateLogCalculation, applyMealDestination } from './mealEditor';
 import { WeighIn, weighInSchema, validateWeighIn, WeightUnit, weightKg, WeightDraft, weightDraftSchema } from './weight';
 import { localDate } from './history';
 
@@ -370,8 +370,8 @@ export class Repository {
     const mealEdit = mealEditSchema.parse(structuredCopy(input));
     return this.serialized(async () => {
       if (this.quickEntry.mealEdit?.id !== mealEdit.id) throw new Error('This meal edit is no longer open.');
-      // Target and concurrency baseline are immutable; only editable rows change.
-      const preferences = quickEntrySchema.parse({ ...this.quickEntry, mealEdit: { ...this.quickEntry.mealEdit, rows: mealEdit.rows } });
+      // Target and concurrency baseline are immutable; only editable rows and the explicit destination change.
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, mealEdit: { ...this.quickEntry.mealEdit, rows: mealEdit.rows, destination: mealEdit.destination } });
       await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences;
     });
   }
@@ -392,17 +392,20 @@ export class Repository {
       const applied = progress.rows.map(({ row, snapshot, nutrition }) => {
         const original = edit.original.find(entry => entry.id === row.entry.id);
         if (!original && this.logs.some(entry => entry.id === row.entry.id)) throw new Error('A new row has an existing diary identity.');
-        if (original && JSON.stringify(original.snapshot) === JSON.stringify(snapshot)) return structuredCopy(original);
-        const baseline = original ?? { id: row.entry.id, batchId: first.batchId, recordedAt: first.recordedAt, timePrecision: first.timePrecision, meal: first.meal };
+        const snapshotChanged = !original || JSON.stringify(original.snapshot) !== JSON.stringify(snapshot);
+        const baseline = original ?? { id: row.entry.id, batchId: first.batchId, recordedAt: first.recordedAt, timePrecision: first.timePrecision, meal: first.meal, snapshot: snapshot!, nutrition: nutrition! };
+        const moved = applyMealDestination(baseline, edit.target === 'logs' ? edit.destination : undefined, new Date(now));
+        const destinationChanged = original && (moved.recordedAt !== original.recordedAt || moved.meal !== original.meal || moved.timePrecision !== original.timePrecision);
+        if (original && !snapshotChanged && !destinationChanged) return structuredCopy(original);
         let batchRecipe = original?.batchRecipe;
-        if (original?.preparedBatchId) {
+        if (snapshotChanged && original?.preparedBatchId) {
           if (original.snapshot.kind !== 'recipe' || snapshot!.kind !== 'recipe') throw new Error('Keep a saved portion as a recipe. Add extra foods separately.');
           batchRecipe = original.batchRecipe ?? original.snapshot.recipe;
           if (snapshot!.recipe.servings !== batchRecipe.servings || snapshot!.recipe.cookedWeightGrams !== batchRecipe.cookedWeightGrams) throw new Error('Keep the original serving and measured weight basis.');
         }
-        const changed = original && JSON.stringify(original.snapshot) !== JSON.stringify(snapshot);
+        const changed = original && (snapshotChanged || destinationChanged);
         if (changed && (original.corrections?.length ?? 0) >= 200) throw new Error('This entry has reached its correction limit.');
-        return logSchema.parse({ ...baseline, snapshot, nutrition, batchRecipe,
+        return logSchema.parse({ ...moved, snapshot: snapshotChanged ? snapshot : original!.snapshot, nutrition: snapshotChanged ? nutrition : original!.nutrition, batchRecipe,
           corrections: edit.target === 'logs' && changed ? [...(original.corrections ?? []), { correctedAt: now, previous: { timePrecision: original.timePrecision, recordedAt: original.recordedAt, meal: original.meal, snapshot: original.snapshot, nutrition: original.nutrition, batchRecipe: original.batchRecipe } }] : original?.corrections });
       });
       const preferences = quickEntrySchema.parse({ ...this.quickEntry, mealEdit: undefined });
@@ -413,6 +416,9 @@ export class Repository {
         assertBatchCapacity(this.preparedBatches, applied);
         await this.commit([put('mealShortcut', shortcut.id, shortcut), put('quickEntry', 'preferences', preferences)]);
         this.shortcuts = this.shortcuts.map(item => item.id === shortcut.id ? shortcut : item); this.quickEntry = preferences; return;
+      }
+      if (JSON.stringify(applied) === JSON.stringify(edit.original)) {
+        await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences; return;
       }
       if (this.mealCorrections.length >= 20000) throw new Error('This diary has reached its meal-correction limit.');
       const removedIds = new Set(edit.original.map(entry => entry.id)), logs = [...this.logs.filter(entry => !removedIds.has(entry.id)), ...applied];

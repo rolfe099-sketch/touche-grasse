@@ -1,3 +1,4 @@
+import { LoggingDestination } from './LoggingDestination';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { dayKey, display, Food, foodNutrition, logName, logQuantity, total, Unit } from '../domain/model';
@@ -9,12 +10,15 @@ import { colors } from './theme';
 import { foodLabel } from '../domain/foodLanguage';
 
 type Picker = { rowId?: string; ingredientId?: string; addIngredient?: boolean };
-export function MealEditor({ onSaved }: { onSaved: () => void }) {
+export function MealEditor({ onSaved }: { onSaved: (date?: string) => void }) {
   const app = useApp(), initial = app.repo.quickEntry.mealEdit!;
   const [edit, setEdit] = useState(initial), [picker, setPicker] = useState<Picker>(), [query, setQuery] = useState(''), [units, setUnits] = useState<string>(), [error, setError] = useState('');
   const progress = reviewMealEdit(edit);
   const title = edit.target === 'shortcut' ? app.repo.shortcuts.find(item => item.id === edit.shortcutId)?.name ?? 'Shortcut' : 'Logged meal';
   const candidates = picker ? app.repo.index.search(query).slice(0, 5) : [];
+  const originalDates = new Set(edit.original.map(entry => dayKey(new Date(entry.recordedAt)))), originalMeals = new Set(edit.original.map(entry => entry.meal));
+  const date = edit.destination?.loggingDate ?? dayKey(new Date(edit.original[0].recordedAt)), meal = edit.destination?.meal ?? edit.original[0].meal;
+  const mixedDate = !edit.destination?.loggingDate && originalDates.size > 1, mixedMeal = !edit.destination?.meal && originalMeals.size > 1;
   function change(next: MealEdit) {
     setEdit(next); setError('');
     void app.saveMealEditDraft(next).catch(() => setError('Could not save the edit draft. Keep this view open; Save will retry.'));
@@ -43,6 +47,7 @@ export function MealEditor({ onSaved }: { onSaved: () => void }) {
   return <View testID="meal-editor">
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ fontSize: 19, fontWeight: '600', flex: 1 }}>{title}</Text><TextButton label="Discard edit" disabled={app.busy} onPress={() => void app.run(() => app.repo.cancelMealEdit(edit.id)).then(ok => { if (ok) onSaved(); })} /></View>
     <Text style={{ color: colors.secondary, fontSize: 12, marginBottom: 8 }}>{edit.target === 'shortcut' ? 'Changes apply to future logs. Past meals stay as recorded.' : 'Correct this meal. Previous values stay in its history.'}</Text>
+    {edit.target === 'logs' && <View style={{ marginBottom: 8 }}><LoggingDestination date={date} meal={meal} mixedDate={mixedDate} mixedMeal={mixedMeal} disabled={app.busy} onChange={destination => change({ ...edit, destination: { ...edit.destination, ...destination } })} />{(mixedDate || mixedMeal) && <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 5 }}>Original destinations are kept until you change them.</Text>}{edit.destination && <TextButton label="Keep original day and meal" disabled={app.busy} onPress={() => change({ ...edit, destination: undefined })} />}</View>}
     {progress.rows.map(({ row, nutrition, error: rowError }, index) => {
       const snapshot = row.entry.snapshot, id = row.entry.id, parentUnit = snapshot.kind === 'food' ? snapshot.ingredient.unit : snapshot.unit;
       return <View key={id} testID={`edit-row-${index}`} style={{ borderBottomWidth: 1, borderColor: colors.line, paddingVertical: 5 }}>
@@ -72,7 +77,7 @@ export function MealEditor({ onSaved }: { onSaved: () => void }) {
     <TextButton label="Add food" accessibilityLabel="Add food to edited meal" disabled={app.busy || edit.rows.length >= 200} onPress={() => pick({})} />
     <View testID="edit-totals" style={{ paddingVertical: 10 }}><Text style={{ fontWeight: '600' }}>{progress.valid ? 'Meal total' : 'Resolved subtotal'} · {display(progress.nutrition.kcal, 0)} kcal</Text><Text style={{ fontSize: 12, color: colors.secondary }}>Protein {display(progress.nutrition.protein)} g · Carbs {display(progress.nutrition.carbohydrate)} g · Fat {display(progress.nutrition.fat)} g · Fiber {display(progress.nutrition.fiber)} g</Text></View>
     {!!error && <Text accessibilityRole="alert" style={{ color: colors.error }}>{error}</Text>}
-    <Button primary label={edit.target === 'shortcut' ? 'Save shortcut changes' : 'Save meal correction'} disabled={app.busy || !progress.valid} onPress={() => void app.run(async () => { await app.repo.saveMealEditDraft(edit); await app.repo.commitMealEdit(edit.id); }, edit.target === 'shortcut' ? 'Shortcut updated' : 'Meal corrected').then(ok => { if (ok) onSaved(); })} />
+    <Button primary label={edit.target === 'shortcut' ? 'Save shortcut changes' : 'Save meal correction'} disabled={app.busy || !progress.valid} onPress={() => void app.run(async () => { await app.repo.saveMealEditDraft(edit); await app.repo.commitMealEdit(edit.id); }, edit.target === 'shortcut' ? 'Shortcut updated' : 'Meal saved').then(ok => { if (ok) onSaved(edit.target === 'logs' ? edit.destination?.loggingDate : undefined); })} />
   </View>;
 }
 

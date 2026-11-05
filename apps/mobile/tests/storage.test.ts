@@ -13,6 +13,7 @@ import { batchBalance } from '../src/domain/portions';
 import { Repository } from '../src/domain/repository';
 import { dayKey, D, emptyDraft, Food, nutrients, Recipe, recipeTotal } from '../src/domain/model';
 import catalogJSON from '../src/data/catalog.json';
+import { dayComplete } from '../src/domain/dailyWorkflows';
 import { emptyTargets, targetOn } from '../src/domain/targets';
 import { confirmBarcodeProduct, parseBarcodeProduct } from '../src/domain/barcode';
 import { applyLabelColumn, parseNutritionLabel, reviewedLabelFood } from '../src/domain/nutritionLabel';
@@ -33,6 +34,67 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  it('moves every selected diary ingredient together, retains exact snapshots and restores both days with persistent Undo', async () => {
+    const storage = await adapter(), repo = await setup(storage), sourceAt = new Date(2026, 9, 5, 8, 45), targetAt = new Date(2026, 9, 4, 12);
+    const draft = draftFor(); for (let i = 0; i < 4; i++) draft.lines.push({ ...draft.lines[0], id: randomUUID(), quantityText: String(11 + i) });
+    await repo.logDraft(draft, sourceAt); const originals = structuredClone(repo.logs);
+    await repo.logDraft(draftFor(), targetAt); const untouched = repo.logs.find(log => !originals.some(item => item.id === log.id))!;
+    await repo.setDayComplete(dayKey(sourceAt), true); await repo.setDayComplete(dayKey(targetAt), true);
+    const pending = draftFor(); await repo.saveDraft(pending);
+    await repo.startMealEdit(originals.map(log => log.id)); const edit = structuredClone(repo.quickEntry.mealEdit!);
+    edit.destination = { loggingDate: dayKey(targetAt), meal: 'Lunsj' }; await repo.saveMealEditDraft(edit);
+    const rescue = await setup(await adapter()); await rescue.restoreJSON(await repo.exportJSON()); expect(rescue.quickEntry.mealEdit!.destination).toEqual(edit.destination); await rescue.commitMealEdit(edit.id); expect(rescue.logs.filter(log => originals.some(original => original.id === log.id)).every(log => dayKey(new Date(log.recordedAt)) === dayKey(targetAt))).toBe(true);
+    const reopened = await setup(storage); expect(reopened.quickEntry.mealEdit!.destination).toEqual(edit.destination);
+    await reopened.commitMealEdit(edit.id);
+    expect(dayComplete(reopened.dayReviews, reopened.logs, dayKey(sourceAt))).toBe(false); expect(dayComplete(reopened.dayReviews, reopened.logs, dayKey(targetAt))).toBe(false);
+    expect(reopened.logs).toHaveLength(6); expect(reopened.logs.find(log => log.id === untouched.id)).toEqual(untouched); expect(reopened.draft).toEqual(pending);
+    for (const original of originals) {
+      const moved = reopened.logs.find(log => log.id === original.id)!;
+      expect(dayKey(new Date(moved.recordedAt))).toBe(dayKey(targetAt)); expect(moved.meal).toBe('Lunsj'); expect(moved.timePrecision).toBe('day');
+      expect(moved.batchId).toBe(original.batchId); expect(moved.snapshot).toEqual(original.snapshot); expect(moved.nutrition).toEqual(original.nutrition);
+      expect(moved.corrections!.at(-1)!.previous.recordedAt).toBe(original.recordedAt);
+    }
+    expect(reopened.mealCorrections.at(-1)!.previous).toEqual(originals);
+    const restored = await setup(await adapter()); await restored.restoreJSON(await reopened.exportJSON());
+    expect(restored.logs).toEqual(expect.arrayContaining(reopened.logs));
+    const again = await setup(storage); await again.undoLast(); expect(again.logs).toHaveLength(6); expect(again.logs).toEqual(expect.arrayContaining([...originals, untouched])); expect(dayComplete(again.dayReviews, again.logs, dayKey(sourceAt))).toBe(true); expect(dayComplete(again.dayReviews, again.logs, dayKey(targetAt))).toBe(true);
+  });
+  it('moving a saved serving changes its destination without consuming another portion or changing its measured recipe', async () => {
+    const storage = await adapter(), repo = await setup(storage);
+    const batch = await repo.createBatchFromDraft(draftFor(), 'Six portions', '6', '60');
+    const original = await repo.logPreparedBatch(batch.id, '1', 'servings', new Date(2026, 9, 5, 18));
+    await repo.startMealEdit([original.id]); const edit = structuredClone(repo.quickEntry.mealEdit!); edit.destination = { loggingDate: '2026-10-04', meal: 'Frokost' };
+    await repo.saveMealEditDraft(edit); await repo.commitMealEdit(edit.id);
+    expect(repo.logs).toHaveLength(1); expect(repo.logs[0].nutrition).toEqual(original.nutrition); expect(repo.logs[0].snapshot).toEqual(original.snapshot);
+    expect(repo.logs[0].preparedBatchId).toBe(batch.id); expect(repo.preparedBatches[0]).toEqual(batch); expect(repo.logs[0].batchRecipe).toBe(original.batchRecipe);
+    expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('5');
+    await repo.undoLast(); expect(repo.logs).toEqual([original]); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('5');
+  });
+  it('a destination-only meal edit never backfills unknown fiber or changes mixed entry times unless selected', async () => {
+    const storage = await adapter(), repo = await setup(storage), firstAt = new Date(2026, 9, 5, 8, 45), secondAt = new Date(2026, 9, 4, 19, 15);
+    const legacy = draftFor(); legacy.lines[0].food = { ...oil, nutrition: { ...oil.nutrition } }; delete legacy.lines[0].food.nutrition.fiber;
+    await repo.logDraft(legacy, firstAt); await repo.logDraft(draftFor(), secondAt); const original = structuredClone(repo.logs);
+    await repo.startMealEdit(original.map(entry => entry.id)); const edit = structuredClone(repo.quickEntry.mealEdit!); edit.destination = { meal: 'Annet' };
+    await repo.saveMealEditDraft(edit); await repo.commitMealEdit(edit.id);
+    for (const before of original) { const after = repo.logs.find(entry => entry.id === before.id)!; expect(after.recordedAt).toBe(before.recordedAt); expect(after.nutrition).toEqual(before.nutrition); expect(after.snapshot).toEqual(before.snapshot); expect(after.meal).toBe('Annet'); }
+    await repo.undoLast(); expect(repo.logs).toEqual(expect.arrayContaining(original));
+  });
+  it('failed and invalid whole-meal moves preserve the diary, original Undo and retained edit destination', async () => {
+    const storage = await adapter(); let fail = false;
+    const repo = await setup({ ...storage, commit: (changes, revision) => fail && changes.some(change => change.type === 'put' && change.record.kind === 'log') ? Promise.reject(new Error('Fixture disk full')) : storage.commit(changes, revision) });
+    await repo.logDraft(draftFor(), new Date(2026, 9, 5)); const before = structuredClone(repo.logs), undo = [...repo.undo];
+    await repo.startMealEdit(before.map(entry => entry.id)); const edit = structuredClone(repo.quickEntry.mealEdit!); edit.destination = { loggingDate: '2026-10-04', meal: 'Lunsj' }; await repo.saveMealEditDraft(edit);
+    fail = true; await expect(repo.commitMealEdit(edit.id)).rejects.toThrow('Fixture disk full'); expect(repo.logs).toEqual(before); expect(repo.undo).toEqual(undo); expect(repo.mealCorrections).toEqual([]);
+    const reopened = await setup(storage); expect(reopened.quickEntry.mealEdit!.destination).toEqual(edit.destination); expect(reopened.logs).toEqual(before);
+    const future = new Date(); future.setDate(future.getDate() + 1); edit.destination.loggingDate = dayKey(future); fail = false;
+    await repo.saveMealEditDraft(edit); await expect(repo.commitMealEdit(edit.id)).rejects.toThrow('earlier date'); expect(repo.logs).toEqual(before); expect(repo.undo).toEqual(undo);
+  });
+  it('saving a no-op meal edit keeps the existing Undo and creates no invented correction history', async () => {
+    const storage = await adapter(), repo = await setup(storage); await repo.logDraft(draftFor(), new Date(2026, 9, 5, 8, 45));
+    const before = structuredClone(repo.logs), undo = [...repo.undo]; await repo.startMealEdit(before.map(entry => entry.id));
+    const edit = structuredClone(repo.quickEntry.mealEdit!); edit.destination = { loggingDate: dayKey(new Date(before[0].recordedAt)), meal: before[0].meal };
+    await repo.saveMealEditDraft(edit); await repo.commitMealEdit(edit.id); expect(repo.logs).toEqual(before); expect(repo.undo).toEqual(undo); expect(repo.mealCorrections).toEqual([]); expect(repo.quickEntry.mealEdit).toBeUndefined();
+  });
   it('retains a dated draft and meal choice, logs the whole meal on that day and learns at confirmation time', async () => {
     const storage = await adapter(), repo = await setup(storage), now = new Date(2026, 10, 5, 9, 30);
     const draft = { ...draftFor(), loggingDate: '2026-11-04', meal: 'Frokost' as const };

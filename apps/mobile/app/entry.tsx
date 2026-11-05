@@ -138,7 +138,7 @@ export default function Entry() {
       try { setDraft(updateLiveText(draft.text, draft, repo.index, repo.quickEntry, repo.id)); } catch { /* Keep source text for correction, including older parser drafts. */ }
     }
   }, [draft, repo, setDraft]);
-  if (repo.quickEntry.mealEdit) return <EntryFrame><Screen support title="Edit meal" back><MealEditor key={repo.quickEntry.mealEdit.id} onSaved={() => router.canGoBack() ? router.back() : router.replace('/')} /></Screen></EntryFrame>;
+  if (repo.quickEntry.mealEdit) return <EntryFrame><Screen support title="Edit meal" back><MealEditor key={repo.quickEntry.mealEdit.id} onSaved={date => date ? router.dismissTo(date === dayKey(new Date()) ? '/' : { pathname: '/history', params: { date, scope: 'day', view: 'intake' } }) : router.canGoBack() ? router.back() : router.replace('/')} /></Screen></EntryFrame>;
   if (repo.quickEntry.repeatReview) return <EntryFrame><Screen keyboardInsets={false} support title="Quick Log" back><LabelDraftResume reviews={labelReviews} disabled={busy} /><RepeatMealReview onLogged={date => logged(date)} requestedDate={params.date} /></Screen></EntryFrame>;
   const splitting = draft.splitPlan;
   const footer = !!draft.lines.length && !(splitting && progress.valid) && <>
