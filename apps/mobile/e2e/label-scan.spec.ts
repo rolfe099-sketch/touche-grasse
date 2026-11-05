@@ -46,10 +46,12 @@ test('real Norwegian image OCR → editable review → exact food math → offli
   test.setTimeout(150000);
   const image = await labelImage(page), external: { url: string; method: string; body: string | null }[] = []; page.on('request', request => { if (/^https?:/.test(request.url()) && !request.url().startsWith('http://127.0.0.1:4173')) external.push({ url: request.url(), method: request.method(), body: request.postData() }); });
   await page.goto('/entry'); await page.getByTestId('quick-text').fill('10g olive oil'); await page.getByTestId('commit-food').click(); await expect(page).toHaveURL(/\/$/);
-  await page.goto('/manual?barcode=7038010001918');
   // Poll the current state: activation can occur between a controller check
   // and attaching an event listener, leaving an event-only wait stuck forever.
+  // Wait before hard navigation: an install that claims clients during an
+  // in-flight navigation may miss the not-yet-committed destination document.
   await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller?.scriptURL ?? ''), { timeout: 15000 }).toContain('/sw.js');
+  await page.goto('/manual?barcode=7038010001918');
   await choosePhoto(page, image);
   await expect(page.getByRole('textbox', { name: 'Energy · kcal', exact: true })).toHaveValue('400');
   await expect(page.getByRole('textbox', { name: 'Protein · g', exact: true })).toHaveValue('25');

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dayKey, LogEntry, logSchema, nutrients, snapshotNutrition } from './model';
+import { D, dayKey, LogEntry, logSchema, nutrients, snapshotNutrition } from './model';
 import { normalize } from './search';
 
 export const mealShortcutSchema = z.object({
@@ -14,7 +14,10 @@ export function validateShortcut(value: unknown): MealShortcut {
   if (new Set(shortcut.entries.map(entry => entry.id)).size !== shortcut.entries.length) throw new Error('This shortcut has duplicate rows.');
   for (const entry of shortcut.entries) {
     const computed = snapshotNutrition(entry.snapshot);
-    if (nutrients.some(key => (computed[key] ?? null) !== (entry.nutrition[key] ?? null))) throw new Error('The shortcut contains an invalid nutrition calculation.');
+    if (nutrients.some(key => {
+      const expected = computed[key], actual = entry.nutrition[key];
+      return (expected == null) !== (actual == null) || (expected != null && actual != null && !new D(expected).eq(actual));
+    })) throw new Error('The shortcut contains an invalid nutrition calculation.');
   }
   return shortcut;
 }

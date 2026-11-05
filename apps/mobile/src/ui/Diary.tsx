@@ -31,7 +31,7 @@ function CompactMeal({ items }: { items: LogEntry[] }) {
       <DeleteLogButton entries={items} label={`Delete ${mealLabel(first.meal)} meal, ${items.length} entries`} />
     </View>}
     {many && expanded && <TextButton label="Repeat with changes" accessibilityLabel={`Adjust ${mealLabel(first.meal)} repeat`} disabled={app.busy || !!app.repo.quickEntry.repeatReview} onPress={() => void app.run(() => app.repo.startRepeatReview(items.map(log => log.id))).then(ok => { if (ok) router.push('/entry'); })} />}
-    {(expanded || !many) && <SaveMealShortcut entries={items} />}
+    {many && expanded && <SaveMealShortcut entries={items} />}
     {/* Keep entry components mounted while folding the journal; hidden rows are excluded from layout and accessibility. */}
     <View style={{ display: !many || expanded ? 'flex' : 'none' }}>{items.map(log => <View key={log.id} testID="log-row" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: many ? 10 : 0, paddingVertical: 6 }}>
       <Pressable accessibilityRole="button" accessibilityLabel={`View ${logName(log)} entry`} onPress={() => router.push({ pathname: '/log', params: { id: log.id } })} style={({ pressed }) => ({ flex: 1, minHeight: 48, justifyContent: 'center', gap: 3, opacity: pressed ? .6 : 1 })}>

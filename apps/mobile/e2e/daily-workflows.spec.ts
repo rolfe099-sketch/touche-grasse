@@ -35,7 +35,10 @@ test('named shortcut: save without eating, one-tap log above fold, adjust, undo,
   await page.getByRole('button', { name: 'Log adjusted meal today', exact: true }).click(); await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId('today-overview').getByTestId('nutrition-kcal')).toHaveText('312');
   const saved = await archive(page); expect(saved.logs).toHaveLength(2); expect(saved.shortcuts[0].entries[0].nutrition.kcal).toBe('89.2'); expect(saved.draft.lines[0].quantityText).toBe('10');
-  await page.goto('/recipes'); await page.getByRole('button', { name: 'Rename shortcut My breakfast', exact: true }).click();
+  await page.goto('/recipes'); await page.getByRole('button', { name: 'Library foods', exact: true }).click();
+  await page.getByRole('tab', { name: 'Today', exact: true }).click(); await page.getByRole('button', { name: 'Manage meal shortcuts', exact: true }).click();
+  await expect(page.getByTestId('library-shortcuts')).toBeVisible();
+  await page.getByRole('button', { name: 'Rename shortcut My breakfast', exact: true }).click();
   await page.getByRole('textbox', { name: 'New shortcut name', exact: true }).fill('Morning oats'); await page.getByRole('button', { name: 'Save name', exact: true }).click(); await expect(page.getByText('Shortcut renamed', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Delete shortcut Morning oats', exact: true }).click(); await expect(page.getByTestId('library-shortcuts').getByTestId('meal-shortcut')).toHaveCount(0);
   await page.getByTestId('library-shortcuts').getByRole('button', { name: 'Deleted', exact: true }).click(); await page.getByRole('button', { name: 'Restore shortcut Morning oats', exact: true }).click();
@@ -51,6 +54,7 @@ test('complete days exclude partial intake from averages, reopen on new food, an
   const saved = await archive(page); expect(saved.dayReviews).toHaveLength(1);
   await page.goto(`/history?date=${dayKey(new Date())}&scope=week`);
   await expect(page.getByText('Average per complete day', { exact: true })).toBeVisible(); await expect(page.getByTestId('nutrition-kcal')).toHaveText('268');
+  await expect(page.getByTestId('support-link').locator('svg')).toBeVisible();
   await page.screenshot({ path: path.join(output, `${test.info().project.name || 'chromium'}-complete-day-history.png`) });
   await page.getByRole('tab', { name: 'Today', exact: true }).click(); await page.getByRole('button', { name: 'Log shortcut My breakfast', exact: true }).click();
   await expect(page.getByTestId('day-completion')).toContainText('Changed since review'); await page.getByRole('button', { name: 'Undo last log', exact: true }).click(); await expect(page.getByTestId('day-completion')).toContainText('Day complete');
@@ -77,5 +81,6 @@ test('voice shortcut command uses the actual entry adapter; library archive can 
   await page.goto('/recipes'); await page.getByRole('button', { name: 'Library foods', exact: true }).click();
   const archiveButton = page.getByRole('button', { name: /^Archive food / }).first(); await archiveButton.click(); await expect(page.getByRole('button', { name: /^Archive food / })).toHaveCount(0);
   await page.getByRole('button', { name: 'Archived foods and recipes', exact: true }).click(); await page.getByRole('button', { name: /^Restore food / }).click(); await expect(page.getByRole('button', { name: /^Restore food / })).toHaveCount(0);
-  const after = await archive(page); expect(after.logs.filter((item: { id: string }) => saved.logs.some((original: { id: string }) => original.id === item.id))).toEqual(saved.logs);
+  const after = await archive(page), byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
+  expect(after.logs.filter((item: { id: string }) => saved.logs.some((original: { id: string }) => original.id === item.id)).sort(byId)).toEqual(saved.logs.sort(byId));
 });

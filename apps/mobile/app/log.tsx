@@ -9,6 +9,7 @@ import { Button, Field, NutritionView, Screen, Section, styles, TextButton } fro
 import { Text } from '../src/ui/Text';
 import { colors } from '../src/ui/theme';
 import { DeleteLogButton } from '../src/ui/Diary';
+import { SaveMealShortcut } from '../src/ui/MealShortcuts';
 
 export default function LogDetails() {
   const app = useApp(), params = useLocalSearchParams<{ id: string }>();
@@ -35,6 +36,7 @@ export default function LogDetails() {
     <Text style={{ fontSize: 24, fontWeight: '600', lineHeight: 29, marginBottom: 4 }}>{logName(entry)}</Text>
     <Text style={styles.subtitle}>{logQuantity(entry)} · {mealLabel(entry.meal)}</Text>
     <NutritionView value={entry.nutrition} />
+    <SaveMealShortcut entries={[entry]} />
     <TextButton label="Repeat with changes" disabled={app.busy || !!app.repo.quickEntry.repeatReview} onPress={() => void app.run(() => app.repo.startRepeatReview([entry.id])).then(ok => { if (ok) router.push('/entry'); })} />
     <Section title="Correct this entry" />
     <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-end' }}><View style={{ flex: 1 }}><Field label="Logged amount" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" /></View><View style={{ flexDirection: 'row', gap: 5, marginBottom: 14 }}>{(snapshot.kind === 'recipe' ? ['servings', 'g'] as const : ['g', 'kg', 'ml', 'l'] as const).map(value => <Button key={value} label={value} compact selected={unit === value} onPress={() => setUnit(value)} />)}</View></View>

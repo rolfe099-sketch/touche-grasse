@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Image, Pressable, View } from 'react-native';
 
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { display, recipePortion } from '../../src/domain/model';
 
@@ -25,11 +25,12 @@ import { foodLabel } from '../../src/domain/foodLanguage';
 
 export default function Recipes() {
 
-  const app = useApp();
+  const app = useApp(), params = useLocalSearchParams<{ view?: string }>();
 
   const [section, setSection] = useState<'all' | 'recipes' | 'foods' | 'portions'>('all'), [query, setQuery] = useState('');
 
   const [archived, setArchived] = useState(false);
+  useEffect(() => { if (params.view === 'shortcuts') { setSection('all'); setQuery(''); setArchived(false); router.setParams({ view: undefined }); } }, [params.view]);
   const hidden = (kind: string, id: string) => !!app.repo.quickEntry.libraryHidden?.[`${kind}:${id}`];
   const recipes = [...app.repo.recipes].filter(recipe => hidden('recipe', recipe.id) === archived).filter(recipe => recipe.name.toLowerCase().includes(query.toLowerCase())).sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name, 'en'));
 

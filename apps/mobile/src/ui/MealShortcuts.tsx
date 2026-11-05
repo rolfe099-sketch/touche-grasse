@@ -24,7 +24,7 @@ export function MealShortcuts({ library = false, query = '', onLogged }: { libra
   const shortcuts = repo.shortcuts.filter(item => (library || item.pinned) && (deleted ? !!item.deletedAt : !item.deletedAt) && normalize(item.name).includes(normalize(query)));
   if (!library && !shortcuts.length) return null;
   return <View testID={library ? 'library-shortcuts' : 'today-shortcuts'}>
-    <Section title="Meal shortcuts">{library ? <TextButton label={deleted ? 'Active' : 'Deleted'} onPress={() => setDeleted(!deleted)} /> : <TextButton label="Edit" accessibilityLabel="Manage meal shortcuts" onPress={() => router.push('/recipes')} />}</Section>
+    <Section title="Meal shortcuts">{library ? <TextButton label={deleted ? 'Active' : 'Deleted'} onPress={() => setDeleted(!deleted)} /> : <TextButton label="Edit" accessibilityLabel="Manage meal shortcuts" onPress={() => router.push({ pathname: '/recipes', params: { view: 'shortcuts' } })} />}</Section>
     {!shortcuts.length && <Text style={{ color: colors.secondary, fontSize: 13 }}>Save a resolved meal in Quick Log, or save one from your journal.</Text>}
     {shortcuts.map(item => {
       const availability = repeatAvailability(makeRepeatReview(item.entries, 'availability'), repo.preparedBatches, repo.logs);

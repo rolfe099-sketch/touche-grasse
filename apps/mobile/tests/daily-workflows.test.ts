@@ -112,3 +112,9 @@ it('rejects corrupt shortcut nutrition and duplicate review dates before changin
   const bad = JSON.parse(original); const review = { id: date, complete: false, updatedAt: at.toISOString(), signature: '[]' }; bad.dayReviews = [review, review];
   expect(() => repo.restoreJSON(JSON.stringify(bad))).toThrow('duplicate'); expect(await repo.exportJSON()).toBe(original);
 });
+it('accepts equivalent legacy decimal formatting without rewriting the historical snapshot', async () => {
+  const repo = await setup(), original = entry(); original.nutrition.kcal = '89.20';
+  const shortcut = await repo.saveShortcut('Legacy breakfast', [original]);
+  expect(shortcut.entries[0].nutrition.kcal).toBe('89.20'); await repo.logShortcut(shortcut.id, at);
+  expect(repo.logs[0].nutrition.kcal).toBe('89.2'); expect(original.nutrition.kcal).toBe('89.20');
+});
