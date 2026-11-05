@@ -5,10 +5,13 @@ import { D, Food, LogEntry, foodSchema, logSchema, nutrients, parseAmount, snaps
 // their cached nutrition is never used to save or log an edited meal.
 export const editRowSchema = z.object({ entry: logSchema, amount: z.string().max(100), ingredients: z.record(z.string().max(200), z.string().max(100)) });
 export const mealEditSchema = z.object({ id: z.string().min(1), target: z.enum(['shortcut', 'logs']), shortcutId: z.string().optional(),
-  original: z.array(logSchema).min(1).max(200), rows: z.array(editRowSchema).max(200) });
+  original: z.array(logSchema).min(1).max(200), rows: z.array(editRowSchema).max(200) })
+  .refine(value => new Set(value.original.map(entry => entry.id)).size === value.original.length && new Set(value.rows.map(row => row.entry.id)).size === value.rows.length, 'A meal edit contains duplicate entry identities.')
+  .refine(value => value.target !== 'shortcut' || !!value.shortcutId, 'Choose the shortcut being edited.');
 export type MealEdit = z.infer<typeof mealEditSchema>;
 export type EditRow = z.infer<typeof editRowSchema>;
-export const mealCorrectionSchema = z.object({ id: z.string().min(1), correctedAt: z.iso.datetime(), previous: z.array(logSchema).min(1).max(200), applied: z.array(logSchema).min(1).max(200), revertedAt: z.iso.datetime().nullable() });
+export const mealCorrectionSchema = z.object({ id: z.string().min(1), correctedAt: z.iso.datetime(), previous: z.array(logSchema).min(1).max(200), applied: z.array(logSchema).min(1).max(200), revertedAt: z.iso.datetime().nullable() })
+  .refine(value => [value.previous, value.applied].every(entries => new Set(entries.map(entry => entry.id)).size === entries.length), 'A meal correction contains duplicate entry identities.');
 export type MealCorrection = z.infer<typeof mealCorrectionSchema>;
 export function editRow(entry: LogEntry): EditRow {
   return { entry: structuredCopy(entry), amount: entry.snapshot.kind === 'food' ? entry.snapshot.ingredient.quantity : entry.snapshot.quantity, ingredients: {} };

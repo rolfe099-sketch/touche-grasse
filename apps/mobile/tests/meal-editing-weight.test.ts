@@ -105,3 +105,11 @@ it('editing one row preserves the exact nutrition and optional-field shape of an
   const edit = structuredClone(legacy.quickEntry.mealEdit!); edit.rows[0].amount = '15'; await legacy.saveMealEditDraft(edit); await legacy.commitMealEdit(edit.id);
   expect(legacy.logs.find(entry => entry.id === untouched.id)).toStrictEqual(untouched);
 });
+it('rejects duplicate correction/editor identities in a corrupt archive without changing current records', async () => {
+  const repo = await setup(); await repo.logDraft(draft(), at); await repo.startMealEdit(repo.logs.map(entry => entry.id));
+  const edit = structuredClone(repo.quickEntry.mealEdit!); edit.rows[0].amount = '15'; await repo.saveMealEditDraft(edit); await repo.commitMealEdit(edit.id);
+  const before = await repo.exportJSON(), badAudit = JSON.parse(before); badAudit.mealCorrections[0].previous.push(badAudit.mealCorrections[0].previous[0]);
+  expect(() => repo.restoreJSON(JSON.stringify(badAudit))).toThrow('duplicate'); expect(await repo.exportJSON()).toBe(before);
+  await repo.startMealEdit(repo.logs.map(entry => entry.id)); const pending = await repo.exportJSON(), badEdit = JSON.parse(pending); badEdit.quickEntry.mealEdit.original.push(badEdit.quickEntry.mealEdit.original[0]);
+  expect(() => repo.restoreJSON(JSON.stringify(badEdit))).toThrow('duplicate'); expect(await repo.exportJSON()).toBe(pending);
+});

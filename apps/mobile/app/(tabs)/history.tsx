@@ -101,7 +101,7 @@ export default function History() {
     </View>
 
     {view === 'intake' && scope !== 'day' && <View style={{ flexDirection: 'row', marginTop: 8 }}><SegmentButton label="Complete days" selected={completeOnly} onPress={() => setCompleteOnly(true)} /><SegmentButton label="All recorded days" selected={!completeOnly} onPress={() => setCompleteOnly(false)} /></View>}
-    {view === 'weight' && <WeightPanel key={`${scope}:${dayKey(date)}`} date={date} scope={scope} onDateSaved={setDate} autoEntry={params.editWeight === '1'} onEntryConsumed={() => router.setParams({ editWeight: undefined })} />}
+    {view === 'weight' && <WeightPanel key={`${scope}:${dayKey(date)}`} date={date} scope={scope} onDateSaved={setDate} autoEntry={params.editWeight === '1' && (!params.date || params.date === dayKey(date)) && (!params.scope || params.scope === scope)} onEntryConsumed={() => router.setParams({ editWeight: undefined })} />}
     {view === 'intake' && <Reveal trigger={`${scope}:${title}`}>
 
       {scope === 'day' && <>

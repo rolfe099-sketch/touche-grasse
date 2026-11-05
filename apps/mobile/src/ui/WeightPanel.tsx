@@ -37,6 +37,10 @@ export function WeightPanel({ date, scope, onDateSaved, autoEntry = false, onEnt
   const rows = period.filter(value => deleted ? !!value.deletedAt : !value.deletedAt);
   const latest = values.filter(value => !value.deletedAt && value.id <= end).sort((a, b) => b.id.localeCompare(a.id))[0];
   const [error, setError] = useState(''), [focusEntry, setFocusEntry] = useState(false), entryStarted = useRef(false);
+  const retainedDraft = app.repo.quickEntry.weightDraft;
+  useEffect(() => {
+    if (!editing && retainedDraft) { setEntryDate(retainedDraft.date); setAmount(retainedDraft.amount); setUnit(retainedDraft.unit); setEditing(true); }
+  }, [retainedDraft, editing]);
   useEffect(() => {
     if (!autoEntry) { entryStarted.current = false; return; }
     if (entryStarted.current) return;
