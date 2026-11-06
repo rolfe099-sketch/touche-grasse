@@ -21,6 +21,9 @@ test('editable cut goals and training/rest schedules keep manual history and per
   const data = await exported(page); expect(data.logs).toEqual([]); expect(data.goalPrograms).toHaveLength(1); expect(data.goalPrograms[0].rest.kcal).toBe('2250'); expect(data.goalPrograms[0].training.kcal).toBe('2450'); expect(data.goalPrograms[0].trainingDays).toEqual([4]);
   await page.reload(); await expect(page.getByText('Cut · Training day', { exact: true }).filter({ visible: true })).toBeVisible(); await expect(page.getByTestId('target-summary').first()).toContainText('2,450');
   await page.getByRole('button', { name: 'Edit daily targets', exact: true }).click(); await page.getByTestId('target-input-kcal').fill('2300'); await page.getByRole('button', { name: 'Save targets', exact: true }).click();
+  // The editor closes only after the repository transaction succeeds. A click
+  // alone is not an acknowledgement before a hard navigation in WebKit.
+  await expect(page.getByTestId('target-editor')).toHaveCount(0); await expect(page.getByTestId('target-summary').first()).toContainText('2,300');
   const overridden = await exported(page); expect(overridden.goalPrograms).toEqual(data.goalPrograms); expect(overridden.targets.at(-1).values.kcal).toBe('2300');
 });
 
