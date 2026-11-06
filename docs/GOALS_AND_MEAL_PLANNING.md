@@ -18,7 +18,7 @@ Choose recurring training weekdays (Monday-based). None are assumed. Rest and Tr
 
 Open the calendar action in Today's header. The week strip can explore past and future weeks. Separate **Eaten**, **Planned** and **Projected** totals include all five nutrients, with unknown values retained. A target is displayed for the selected date.
 
-Choose an existing personal recipe, one of the original meal ideas, saved portions, a named usual meal, foods from bilingual search, or all resolved ingredients in the current Quick Log draft. Planning a Quick Log meal leaves its original draft intact. Discover recipe details and Library recipes also offer Plan actions. A retained open plan takes precedence over incoming recipe shortcuts.
+Choose an existing personal recipe, one of the original meal ideas, saved portions, a named usual meal, foods from bilingual search, or all resolved ingredients in the current Quick Log draft. Planning a Quick Log meal leaves its original draft intact. A draft set to split into servings must first be saved as a batch; then plan individual portions, avoiding an accidental whole-batch meal. Discover recipe details and Library recipes also offer Plan actions. A retained open plan takes precedence over incoming recipe shortcuts.
 
 Plan name, calendar date, meal and each amount are editable together. Partial dates and amounts are retained in the on-device draft. The Save action requires a valid date, positive quantities and a nonempty name. Confirmed storage acknowledgement is shown before a hard reload is safe. Saving a plan adds **no diary entry** and consumes **no stock**.
 

@@ -87,3 +87,10 @@ test('saved portions are not reserved by plans and insufficient stock blocks con
   await page.goto('/planner'); await page.getByRole('button', { name: 'Edit plan Chicken pesto pasta', exact: true }).click(); await page.getByRole('textbox', { name: 'Planned amount 1 · servings', exact: true }).fill('5'); await save(page); await page.getByRole('button', { name: 'Log plan Chicken pesto pasta', exact: true }).click(); await expect(page.getByText('Planned meal logged', { exact: true }).filter({ visible: true })).toBeVisible();
   const eaten = await exported(page); expect(eaten.logs).toHaveLength(2); const added = eaten.logs.find((l: { id: string }) => l.id !== before.logs[0].id); expect(added.preparedBatchId).toBe(eaten.preparedBatches[0].id); expect(added.nutrition).toEqual(recipePortion(recipeIdeas[0].recipe, '5'));
 });
+
+test('a split cooking draft must become saved portions before it can be planned as servings', async ({ page }) => {
+  await page.goto('/'); await page.getByTestId('universal-log').click(); await page.getByTestId('quick-text').fill('60g olive oil'); await page.getByRole('button', { name: 'Split into servings', exact: true }).click(); await expect(page.getByTestId('batch-servings')).toHaveValue('6');
+  await page.getByRole('button', { name: 'Back', exact: true }).click(); await page.getByRole('button', { name: 'Meal planner', exact: true }).click(); await page.getByRole('button', { name: 'Usual meals', exact: true }).click(); await page.getByRole('button', { name: 'Plan Current Quick Log meal', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ visible: true })).toContainText('Save this batch in Quick Log first'); await expect(page.getByTestId('plan-editor')).toHaveCount(0);
+  const data = await exported(page); expect(data.logs).toEqual([]); expect(data.mealPlans).toEqual([]); expect(data.draft.splitPlan.servingsText).toBe('6'); expect(data.draft.lines[0].quantityText).toBe('60');
+});
