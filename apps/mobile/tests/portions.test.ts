@@ -4,7 +4,7 @@ import catalog from '../src/data/catalog.json';
 import { D, emptyDraft, Food, foodNutrition, LogEntry, nutrients, PreparedBatch, recipePortion, recipeTotal, total } from '../src/domain/model';
 import { FoodIndex } from '../src/domain/search';
 import { emptyPreferences, matchIngredient, reviewInput } from '../src/domain/quickEntry';
-import { assertBatchCapacity, batchBalance, portionFits, validateBatch } from '../src/domain/portions';
+import { assertBatchCapacity, batchBalance, convertPortionAmount, portionFits, quickBatchPortion, validateBatch } from '../src/domain/portions';
 import { cookingRecordAllowed } from '../src/domain/foodLanguage';
 const index = new FoodIndex(); (catalog as Food[]).forEach(food => index.add(food));
 export const ids = ['mvt:03.205', 'mvt:05.016', 'mvt:06.144', 'mvt:08.019', 'mvt:01.200'];
@@ -63,4 +63,38 @@ it('preserves unknown nutrients, validates custom counts and protects original b
   const entry = log(b, '1', 'servings'); if (entry.snapshot.kind === 'recipe') entry.snapshot.recipe = { ...entry.snapshot.recipe, servings: '12' };
   expect(() => assertBatchCapacity([b], [entry])).toThrow('original batch');
   expect(() => assertBatchCapacity([], [log(b, '1', 'servings')])).toThrow('missing');
+});
+
+it('switches portion units only through exact measured conversions, preserving every nutrient', () => {
+  const b = batch(), before = JSON.stringify(b);
+  for (const [value, expected] of [['1', '100'], ['0,5', '50'], ['2.5', '250']]) {
+    expect(convertPortionAmount(b.recipe, value, 'servings', 'g')).toBe(expected);
+    expect(recipePortion(b.recipe, expected, 'g')).toEqual(recipePortion(b.recipe, value.replace(',', '.'), 'servings'));
+    expect(convertPortionAmount(b.recipe, expected, 'g', 'servings')).toBe(value.replace(',', '.'));
+  }
+  expect(JSON.stringify(b)).toBe(before);
+});
+it('does not infer weight or round recurring conversions into a different portion', () => {
+  const b = batch(); b.recipe.cookedWeightGrams = null;
+  expect(convertPortionAmount(b.recipe, '1', 'servings', 'g')).toBeNull();
+  b.recipe.cookedWeightGrams = '1000';
+  expect(convertPortionAmount(b.recipe, '1', 'servings', 'g')).toBeNull();
+  expect(convertPortionAmount(b.recipe, '0.6', 'servings', 'g')).toBe('100');
+  for (const invalid of ['', '15,', '0', '-1', 'abc']) expect(convertPortionAmount(b.recipe, invalid, 'servings', 'g')).toBeNull();
+});
+it('offers one serving or the exact final fraction without exceeding saved stock', () => {
+  const b = batch(); expect(quickBatchPortion(b, [])).toEqual({ quantity: '1', unit: 'servings' });
+  b.recipe.cookedWeightGrams = null;
+  const logs = [log(b, '5.5', 'servings')], quick = quickBatchPortion(b, logs)!;
+  expect(quick).toEqual({ quantity: '0.5', unit: 'servings' }); portionFits(b, logs, quick.quantity, quick.unit);
+  logs.push(log(b, quick.quantity, quick.unit)); expect(batchBalance(b, logs).numerator.isZero()).toBe(true);
+  expect(quickBatchPortion(b, logs)).toBeUndefined();
+});
+it('finishes recurring serving inventory using exact measured grams and preserves unknown nutrients', () => {
+  const b = batch(); b.recipe.cookedWeightGrams = '7';
+  b.recipe.ingredients[0].food = { ...b.recipe.ingredients[0].food, nutrition: { ...b.recipe.ingredients[0].food.nutrition, fiber: null } };
+  const logs = [log(b, '6', 'g')], quick = quickBatchPortion(b, logs)!;
+  expect(quick).toEqual({ quantity: '1', unit: 'g' }); portionFits(b, logs, quick.quantity, quick.unit);
+  expect(recipePortion(b.recipe, quick.quantity, quick.unit).fiber).toBeNull();
+  logs.push(log(b, quick.quantity, quick.unit)); expect(batchBalance(b, logs).numerator.isZero()).toBe(true);
 });

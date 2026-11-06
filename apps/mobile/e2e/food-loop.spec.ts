@@ -67,13 +67,17 @@ test('recipe creation, edit, portion logging, backup export and restoration', as
   await page.getByRole('textbox', { name: 'Ingredient 1 amount', exact: true }).fill('60');
   await page.getByRole('textbox', { name: 'Preparation · one step per line' }).fill('Mål opp oljen.\nFordel i seks porsjoner.');
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  await expect(page).toHaveURL(/\/recipes$/);
   await expect(page.getByText('Olivenolje til matlaging', { exact: true })).toBeVisible();
   await page.screenshot({ path: path.join(screenshots, 'recipes-390.png'), fullPage: true });
   await page.getByRole('button', { name: 'Log one serving', exact: true }).click();
+  await expect(page.getByText('One serving logged', { exact: true })).toBeVisible();
   await page.goto('/'); await expect(page.getByTestId('nutrition-kcal')).toHaveText('89');
   await page.goto('/recipes'); await page.getByRole('button', { name: /^Open recipe / }).click();
   await page.getByRole('textbox', { name: 'Ingredient 1 amount', exact: true }).fill('120');
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  // Wait for the acknowledged save and its redirect before a hard navigation.
+  await expect(page).toHaveURL(/\/recipes$/);
   await page.goto('/'); await expect(page.getByTestId('nutrition-kcal')).toHaveText('89');
   await page.goto('/settings');
   const downloadPromise = page.waitForEvent('download');
@@ -126,15 +130,16 @@ test('manual per-100ml food, unknown nutrient and cached barcode round trip', as
   await page.getByRole('textbox', { name: 'Energy · kcal', exact: true }).fill('40');
   await page.getByRole('textbox', { name: 'Protein · g', exact: true }).fill('0');
   await page.getByRole('textbox', { name: 'Carbs · g', exact: true }).fill('10');
+  await page.getByRole('textbox', { name: 'Amount to add · ml', exact: true }).fill('250');
   await page.getByRole('button', { name: 'Confirm and add', exact: true }).click();
-  await page.getByTestId('quantity-0').fill('250');
+  await expect(page.getByTestId('quantity-0')).toHaveValue('250');
   await page.getByTestId('commit-food').click();
   await expect(page.getByTestId('nutrition-kcal')).toHaveText('100');
   await expect(page.getByText('– means a nutrient value is unknown.', { exact: true })).toBeVisible();
   await page.getByTestId('today-add').click();
   await page.getByRole('button', { name: 'Scan a barcode', exact: true }).click();
   await page.getByRole('textbox', { name: 'Barcode', exact: true }).fill('1234567890123');
-  await page.getByRole('button', { name: 'Find saved product', exact: true }).click();
+  await page.getByRole('button', { name: 'Find product', exact: true }).click();
   await expect(page.getByTestId('quantity-0')).toHaveValue('100');
   await page.getByTestId('commit-food').click();
   await expect(page.getByTestId('nutrition-kcal')).toHaveText('140');

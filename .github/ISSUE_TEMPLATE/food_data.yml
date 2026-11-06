@@ -1,0 +1,31 @@
+name: Food data or matching
+description: Report an incorrect match, preparation distinction or source record
+body:
+  - type: markdown
+    attributes:
+      value: Use public food/package information and fictional quantities. Never attach a personal diary export or identifying photo.
+  - type: input
+    id: query
+    attributes:
+      label: Search or entry text
+      placeholder: 200g chicken breast
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Actual result and expected food
+      description: Include raw/cooked, dry/cooked, g/ml and brand distinctions where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Public source or label evidence
+      description: Food ID, public product URL, barcode or a non-identifying nutrition-label image. Distinguish per 100 g/ml from per serving.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit

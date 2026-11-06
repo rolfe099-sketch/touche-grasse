@@ -1,0 +1,15 @@
+# Faster repeat meals
+
+Today keeps the existing one-tap usual-meal actions and adds **Adjust** beside each shortcut. Quick Log's recent meals and logged-entry details offer the same editor. A grouped diary meal exposes **Repeat with changes** when expanded.
+
+The compact editor changes grams, milliliters or recipe servings inline, shows live calories/macros/fiber and logs the adjusted meal in one action. It uses the food or recipe snapshots captured in the source meal. It never changes the historical entries, silently selects a newer product or assumes a weight conversion. The original meal labels and quantity units stay unchanged. Changing products or units remains an ordinary Quick Log operation.
+
+Adjusted repeats have a separate persisted draft, stored as an optional Quick Entry preference. They survive navigation, reload and export/import, and never replace an unfinished ordinary meal. Only the focused screen mounts the editor; returning to it waits for acknowledged writes before loading its amounts. Cancel removes only the adjusted repeat. A failed write preserves the previous acknowledged state and reports an error. Logging atomically creates all entries, clears the repeat draft and records a single Undo action.
+
+Recipe entries linked to saved portions retain their original batch ID. The editor displays remaining servings and blocks overdraw before logging. The repository rechecks inventory at commit, including combined gram/serving amounts. Undo returns exactly the consumed amount. A missing or incompatible source batch blocks logging rather than turning finite portions into an unlimited recipe.
+
+Commands such as **Same breakfast as yesterday**, **Repeat lunch from yesterday** and **Log dinner yesterday** select that meal from the previous local calendar day, including separately logged additions. They never substitute another day or meal. The existing explicit repeat command commits the selection as one action and provides Undo. These command-parser tests do not establish physical microphone recognition accuracy.
+
+Browser tests compare the existing repeat-then-correct flow with adjusting before logging at 390×844. Counts include each tap and text-entry action separately. The tested two-food meal takes six actions through repeat-then-correct, four through inline adjustment, and one when repeated unchanged. Neither comparison required a manual scroll at 390×844. Scroll counts track explicit scroll requests; browser focus scrolling and anchoring are excluded. Automation elapsed time is recorded separately; automated timings are not human performance benchmarks. Screenshots and measurements are written under ignored `verification/repeat-meals/` using isolated test diaries.
+
+Remaining limits: this adds quantity adjustment, not named or pinned shortcut management, product replacement within a repeat, or a broad conversational-history search. The owner confirmed amount editing, totals, adjusted logging and Undo work comfortably on iPhone 13 Pro. Native multi-row isolation and finite-inventory edge cases still need separate physical acceptance.

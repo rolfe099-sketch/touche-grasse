@@ -3,19 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "license": "AGPL-3.0-only",
-  "repository": { "type": "git", "url": "https://github.com/rolfe099-sketch/touche-grasse.git", "directory": "apps/mobile" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rolfe099-sketch/touche-grasse.git",
+    "directory": "apps/mobile"
+  },
   "funding": "https://buymeacoffee.com/endoftheend",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
-    "web": "expo start --web",
+    "web": "node scripts/prepare-ocr.mjs && expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "catalog": "python scripts/import_catalog.py",
-    "build:web": "expo export --platform web && node scripts/prepare-offline.mjs",
-    "preview": "node scripts/serve-preview.mjs"
+    "build:web": "node scripts/prepare-ocr.mjs && expo export --platform web && node scripts/prepare-offline.mjs",
+    "preview": "node scripts/serve-preview.mjs",
+    "start:iphone": "expo start --dev-client --lan --port 8082",
+    "test:iphone:web": "playwright test --config playwright.iphone.config.ts",
+    "prepare:ocr": "node scripts/prepare-ocr.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/dm-sans": "0.4.2",
@@ -25,6 +32,7 @@
     "expo-camera": "~17.0.10",
     "expo-constants": "~18.0.14",
     "expo-crypto": "~15.0.9",
+    "expo-dev-client": "~6.0.21",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.24",
     "expo-font": "~14.0.12",
@@ -32,6 +40,7 @@
     "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "~17.0.11",
     "expo-linking": "~8.0.12",
+    "expo-ocr-kit": "0.1.4",
     "expo-router": "~6.0.24",
     "expo-sharing": "~14.0.8",
     "expo-speech-recognition": "^3.1.3",
@@ -45,10 +54,13 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
+    "tesseract.js": "7.0.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
+    "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/nor": "1.0.0",
     "@types/node": "^26.6.5",
     "@types/react": "~19.1.10",
     "eslint": "^9.39.5",

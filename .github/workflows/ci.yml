@@ -14,12 +14,18 @@ concurrency:
 
 jobs:
   mobile:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --user 1001 --ipc=host --init
     timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/mobile
     env:
+      # Keep this and the container tag aligned with package-lock.json.
+      TG_PLAYWRIGHT_IMAGE_VERSION: '1.64.1'
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       EXPO_OFFLINE: '1'
       TG_REDESIGN_OUTPUT: ../../verification/ci
       TG_POLISH_OUTPUT: ../../verification/ci
@@ -33,12 +39,14 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci
+      - name: Verify pinned browser runtime
+        run: node scripts/check-browser-runtime.mjs
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
       - run: npm run build:web
-      - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - run: npm run test:iphone:web
       - name: Browser reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -47,5 +55,28 @@ jobs:
           path: |
             verification/ci
             verification/targets-support
+            verification/iphone-readiness
+            verification/deletion
+            verification/voice-multi
+            verification/barcode
+            verification/recovery
+            verification/repeat-meals
+            verification/daily-workflows
+            verification/meal-editing-weight
+            verification/voice-scan-reliability
+            verification/label-scanning
+            verification/label-capture
+            verification/log-destinations
+            verification/portion-drafts
+            verification/discover
+            verification/goals-planning
+            verification/discover-overhaul
+            verification/meal-prep
+            verification/food-matching
+            verification/backup-upgrades
+            verification/offline-interruptions
+            verification/accessibility-finish
+            verification/logging-craft
+            verification/iphone-usability
             apps/mobile/test-results
           retention-days: 7

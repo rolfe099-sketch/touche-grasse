@@ -1,13 +1,33 @@
 import { z } from 'zod';
-import { Draft, draftSchema, Food, foodNutrition, IdFactory, Line, lineIngredient, LogEntry, parseEntry, total } from './model';
+import { portionDraftsSchema } from './portionDraft';
+import { Draft, draftSchema, Food, foodNutrition, IdFactory, Line, lineIngredient, LogEntry, meals, parseEntry, total } from './model';
 import { FoodIndex, normalize } from './search';
 import { cookingRecordAllowed, preparationNeedsChoice } from './foodLanguage';
+import { labelFormSchema } from './nutritionLabel';
+import { repeatReviewSchema } from './repeatMeal';
+import { mealEditSchema } from './mealEditor';
+import { weightDraftSchema } from './weight';
+import { planDraftSchema } from './mealPlanning';
 
 // References only: nutrients always come from the current verified Food record.
+export const voiceDraftSchema = z.object({ id: z.string().min(1).max(200), text: z.string().max(12000), locale: z.enum(['en-US', 'nb-NO']) });
+export type VoiceDraft = z.infer<typeof voiceDraftSchema>;
 export const quickEntrySchema = z.object({
   matches: z.record(z.string().max(500), z.object({ foodId: z.string().max(200), confirmedAt: z.iso.datetime() })),
   favorites: z.array(z.string().max(200)).max(20000),
+  portionDrafts: portionDraftsSchema.optional(),
+  planDraft: planDraftSchema.optional(),
+  lastMeal: z.enum(meals).optional(),
   entryMethod: z.enum(['text', 'voice', 'scan']).optional(),
+  voiceDraft: voiceDraftSchema.nullable().optional(),
+  voiceLocale: z.enum(['en-US', 'nb-NO']).optional(),
+  lastVoiceCommand: z.string().max(200).optional(),
+  repeatReview: repeatReviewSchema.optional(),
+  mealEdit: mealEditSchema.optional(),
+  weightUnit: z.enum(['kg', 'lb']).optional(),
+  weightDraft: weightDraftSchema.nullable().optional(),
+  libraryHidden: z.record(z.string().max(220), z.boolean()).refine(value => Object.keys(value).length <= 30000, 'Too many library archive changes.').optional(),
+  labelDrafts: z.record(z.string().max(500), labelFormSchema).refine(value => Object.keys(value).length <= 20, 'Finish or discard an earlier label draft first.').optional(),
 });
 export type QuickEntryPreferences = z.infer<typeof quickEntrySchema>;
 export const emptyPreferences = (): QuickEntryPreferences => ({ matches: {}, favorites: [] });
@@ -27,7 +47,9 @@ export function matchIngredient(query: string, index: FoodIndex, preferences: Qu
   const remembered = preferences.matches[normalize(query)];
   const previous = remembered && index.get(remembered.foodId);
   const learned = previous && cookingRecordAllowed(query, previous) ? previous : undefined;
-  const exact = index.exact(query).filter(food => cookingRecordAllowed(query, food));
+  // A provider's generic product name/alias is not a confirmed cooking query.
+  // Barcode reuse is immediate; text matching needs its own explicit choice.
+  const exact = index.exact(query).filter(food => !['openFoodFacts', 'confirmedOCR'].includes(food.provenance.source) && cookingRecordAllowed(query, food));
   const food = learned || (exact.length === 1 && !preparationNeedsChoice(query, exact[0]) ? exact[0] : null);
   const candidates = index.search(query);
   return { food, reason: learned ? 'remembered' : food ? 'exact' : 'needs-choice', candidates: food ? [food, ...candidates.filter(f => f.id !== food.id)] : candidates };
@@ -62,6 +84,7 @@ export function updateLiveText(text: string, draft: Draft, index: FoodIndex, pre
     rows.push({ id: lineId, query: source.query, quantityText: source.quantityText, unit: source.unit });
     const sameQuery = old && previousSource && normalize(previousSource.query) === normalize(source.query);
     return { ...source, id: lineId,
+      ...(sameQuery && old.entrySource ? { entrySource: old.entrySource } : {}),
       food: sameQuery ? old.food : matchIngredient(source.query, index, preferences).food,
       quantityText: sameQuery && previousSource.quantityText === source.quantityText ? old.quantityText : source.quantityText,
       unit: sameQuery && previousSource.unit === source.unit ? old.unit : source.unit };

@@ -44,7 +44,7 @@ test('real historical backup → four scopes → chart selection → calendar �
   await page.getByRole('button', { name: 'Month', exact: true }).click();
   // The archive uses October dates; do not depend on the wall-clock month.
   await page.goto('/history?date=2026-10-05&scope=month');
-  await expect(page.getByText('Shaded days have entries. Tap a date to open its diary.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Shaded days are recorded or reviewed. Tap a date to open its diary.', { exact: true })).toBeVisible();
   await page.screenshot({ path: path.join(screenshots, 'history-month-390.png') });
   await page.getByTestId('calendar-2026-10-05').click();
   const expected = foodNutrition(food('mvt:03.205'), '220', 'g');
@@ -97,7 +97,7 @@ test('cookbook layout, inline amounts, retained recipe edits and English search 
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
   await page.getByRole('button', { name: 'Dismiss notification', exact: true }).click();
   await page.screenshot({ path: path.join(screenshots, 'cookbook-375.png') });
-  await page.getByRole('tab', { name: 'Discover', exact: true }).click();
+  await page.getByRole('tab', { name: 'Discover', exact: true }).click(); await page.getByRole('button', { name: 'Ingredients', exact: true }).click();
   await page.getByTestId('search-input').fill('olive oil');
   await expect(page.getByTestId('food-mvt:08.019')).toBeVisible();
 });

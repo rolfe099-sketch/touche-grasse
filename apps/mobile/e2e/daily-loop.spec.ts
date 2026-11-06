@@ -1,8 +1,18 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 const output = path.resolve(process.env.TG_REDESIGN_OUTPUT ?? '../../verification/daily-loop');
+async function persistedValue(page: Page, key: string): Promise<unknown> {
+  return page.evaluate(recordKey => new Promise((resolve, reject) => {
+    const request = indexedDB.open('touche-grasse-v1'); request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result, transaction = db.transaction('records', 'readonly'), saved = transaction.objectStore('records').get(recordKey);
+      transaction.oncomplete = () => { db.close(); resolve(saved.result?.value); };
+      transaction.onabort = () => { db.close(); reject(transaction.error); };
+    };
+  }), key);
+}
 test('daily loop: auto focus, isolated correction, folded journal, repeat, reload and undo', async ({ page }) => {
   mkdirSync(output, { recursive: true });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -51,6 +61,7 @@ test('entry method is remembered but a draft takes priority; Type focuses the me
   await page.goto('/entry');
   await page.getByRole('button', { name: 'Scan a barcode', exact: true }).click();
   await expect(page.getByTestId('inline-scanner')).toBeVisible();
+  await expect.poll(() => persistedValue(page, 'quickEntry:preferences')).toMatchObject({ entryMethod: 'scan' });
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByTestId('universal-log').click();
   await expect(page.getByTestId('inline-scanner')).toBeVisible();
@@ -60,11 +71,16 @@ test('entry method is remembered but a draft takes priority; Type focuses the me
   await expect(page.getByTestId('voice-command')).toHaveCount(0);
   await page.getByTestId('quick-text').fill('10g olive oil');
   await page.getByRole('button', { name: 'Scan a barcode', exact: true }).click();
+  await expect.poll(() => persistedValue(page, 'draft:active')).toMatchObject({ text: '10g olive oil' });
+  await expect.poll(() => persistedValue(page, 'quickEntry:preferences')).toMatchObject({ entryMethod: 'scan' });
   await page.reload();
   await expect(page.getByTestId('quick-text')).toHaveValue('10g olive oil');
   await expect(page.getByTestId('commit-food')).toBeEnabled();
   await page.getByRole('button', { name: 'Change meal type, Dinner', exact: true }).click();
   await page.getByRole('button', { name: 'Lunch', exact: true }).click();
+  // A hard reload destroys the document. Check the actual persistence boundary
+  // instead of racing the asynchronous draft write with navigation.
+  await expect.poll(() => persistedValue(page, 'draft:active')).toMatchObject({ meal: 'Lunsj' });
   await page.reload();
   await expect(page.getByRole('button', { name: 'Change meal type, Lunch', exact: true })).toBeVisible();
   await page.getByTestId('commit-food').click();

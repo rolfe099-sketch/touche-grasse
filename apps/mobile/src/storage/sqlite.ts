@@ -19,13 +19,19 @@ CREATE INDEX records_kind ON records(kind);
 PRAGMA user_version=2;`;
 
 export async function openSQLStorage(db: SQLDatabase): Promise<StorageAdapter> {
-  await db.execAsync('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
-  const version = (await db.getAllAsync<{ user_version: number }>('PRAGMA user_version'))[0].user_version;
-  if (version > 2) { await db.closeAsync(); throw new Error('This database needs a newer app. No records were deleted.'); }
-  if (version < 2) await db.withExclusiveTransactionAsync(async tx => {
-    if (version < 1) await tx.execAsync(migration1);
-    await tx.execAsync(migration2);
-  });
+  try {
+    await db.execAsync('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
+    const version = (await db.getAllAsync<{ user_version: number }>('PRAGMA user_version'))[0].user_version;
+    if (version > 2) throw new Error('This database needs a newer app. No records were deleted.');
+    if (version < 2) await db.withExclusiveTransactionAsync(async tx => {
+      if (version < 1) await tx.execAsync(migration1);
+      await tx.execAsync(migration2);
+    });
+  } catch (error) {
+    // A failed migration/PRAGMA must not leave a native handle locking the file.
+    try { await db.closeAsync(); } catch { /* Preserve the original initialization error. */ }
+    throw error;
+  }
   return {
     async load() {
       let records: Stored[] = [], revision = 0;

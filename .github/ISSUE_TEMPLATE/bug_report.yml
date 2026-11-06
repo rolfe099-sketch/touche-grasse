@@ -23,3 +23,13 @@ body:
       label: Device, OS, browser or Expo runtime
     validations:
       required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit
+      description: Include whether this is a development build, TestFlight build or web preview.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or relevant error text
+      description: Remove personal records and credentials first. Never upload a backup file.

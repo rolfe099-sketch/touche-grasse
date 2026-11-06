@@ -1,5 +1,5 @@
 import { Food, LogEntry } from './model';
-import { cookingRecordAllowed, ingredientAliases, ingredientRelevance, vocabulary } from './foodLanguage';
+import { cookingRecordAllowed, ingredientAliases, ingredientRelevance, ingredientSearchQuery, vocabulary } from './foodLanguage';
 
 export function normalize(text: string): string {
   return text.toLowerCase().replace(/æ/g, 'ae').replace(/ø/g, 'o').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -58,24 +58,29 @@ export class FoodIndex {
     this.cache.clear();
   }
   isSaved(id: string) { return this.saved.has(id); }
-  search(input: string, savedOnly = false): Food[] {
-    const query = normalize(input.slice(0, 200)), key = `${savedOnly}:${query}`;
+  search(input: string, savedOnly = false, limit = 50): Food[] {
+    const query = normalize(input.slice(0, 200)), key = `${savedOnly}:${limit}:${query}`;
     const cached = this.cache.get(key); if (cached) return cached;
-    const terms = query.split(' ').filter(Boolean).slice(0, 12);
+    const terms = ingredientSearchQuery(query).split(' ').filter(Boolean).slice(0, 12);
+    const allowed = (id: string) => (!savedOnly || this.saved.has(id)) && (!query || cookingRecordAllowed(query, this.records.get(id)!.food));
     let ids: string[];
     if (!terms.length) ids = [...this.records.keys()];
     else {
+      // Whole words (including vocabulary equivalents) beat prefix collisions.
+      // For example Norwegian 'ris' must not rank 'ristede' chestnuts as rice.
       const sets = terms.map(t => this.prefixes.get(t) ?? new Set<string>()).sort((a, b) => a.size - b.size);
-      ids = [...sets[0]].filter(id => sets.every(set => set.has(id)));
+      const prefixed = [...sets[0]].filter(id => sets.every(set => set.has(id)) && allowed(id));
+      const complete = prefixed.filter(id => terms.every(term => this.records.get(id)!.words.some(word => word === term || word === term + 's' || term === word + 's')));
+      ids = complete.length ? complete : prefixed;
       if (!ids.length) ids = [...this.records.values()].filter(r => terms.every(term => r.words.some(word => word.startsWith(term) || near(term, word) || ['en', 'er', 'ene'].some(suffix => term === word + suffix)) || (term.length >= 6 && r.compact.some(c => c.includes(term))))).map(r => r.food.id);
     }
-    const relevant = ids.filter(id => (!savedOnly || this.saved.has(id)) && (!query || cookingRecordAllowed(query, this.records.get(id)!.food)));
+    const relevant = ids.filter(allowed);
     const tier = (id: string) => {
-      const exact = this.records.get(id)!.names.includes(query) && query !== '';
+      const exact = this.records.get(id)!.names.includes(query) && query !== '' && query !== 'oatmeal';
       return (this.confirmed[query]?.foodId === id ? 10000 : 0) + (exact ? 5000 : 0) + (this.favorites.has(id) ? 3000 : 0) + (this.usage.has(id) ? 2000 : 0) + (this.saved.has(id) ? 1000 : 0) + ingredientRelevance(query, this.records.get(id)!.names);
     };
     relevant.sort((a, b) => tier(b) - tier(a) || (this.usage.get(b)?.count ?? 0) - (this.usage.get(a)?.count ?? 0) || (this.usage.get(b)?.latest ?? 0) - (this.usage.get(a)?.latest ?? 0) || this.records.get(a)!.food.name.length - this.records.get(b)!.food.name.length || this.records.get(a)!.food.name.localeCompare(this.records.get(b)!.food.name, 'nb'));
-    const result = relevant.slice(0, 50).map(id => this.records.get(id)!.food);
+    const result = relevant.slice(0, Math.max(0, limit)).map(id => this.records.get(id)!.food);
     if (this.cache.size >= 100) this.cache.clear();
     this.cache.set(key, result);
     return result;

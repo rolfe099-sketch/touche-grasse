@@ -1,31 +1,48 @@
-# Touche Grasse
+<p align="center"><img src="apps/mobile/assets/brand/app-icon.png" width="80" alt="Touche Grasse emblem"></p>
+<h1 align="center">Touche Grasse</h1>
+<p align="center">Fast meal logging. Clear nutrition. Your records stay with you.</p>
+<p align="center">
+  <a href="https://github.com/rolfe099-sketch/touche-grasse/actions/workflows/ci.yml"><img src="https://github.com/rolfe099-sketch/touche-grasse/actions/workflows/ci.yml/badge.svg?branch=main" alt="Main branch checks"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue" alt="AGPL-3.0-only license"></a>
+</p>
+<p align="center"><a href="#getting-started">Get started</a> · <a href="docs/README.md">Documentation</a> · <a href="CONTRIBUTING.md">Contribute</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="https://rolfe099-sketch.github.io/touche-grasse/privacy/">Privacy</a></p>
 
-**Fast food logging. Your data stays with you. Free and open source.**
+Touche Grasse is a free, open-source food and macro tracker built with Expo and React Native. Type a whole meal, confirm the food matches inline, and log it in one action. Track calories, protein, carbs, fat and fiber, with recipes, saved portions and a meal planner in the same app.
 
-Touche Grasse is a local-first calorie and macro tracker built with Expo and React Native. Type a whole meal, resolve the ingredients inline, and log it in one action. Foods, recipes, saved portions, drafts and history stay on your device.
+No app account, ads, subscription or analytics SDK. Diary records are stored locally. Optional speech recognition, barcode lookup and external links have their own network behavior; see the [privacy policy](https://rolfe099-sketch.github.io/touche-grasse/privacy/).
 
-No account, subscription or analytics SDK. Optional donations help support development: [Buy me a coffee](https://buymeacoffee.com/endoftheend).
-
-<p>
-  <img src="docs/images/today.png" alt="Today with calorie, protein, carbohydrate, fat and fiber targets" width="280">
-  <img src="docs/images/quick-log.png" alt="Five ingredients resolved in the compact Quick Log review" width="280">
+<p align="center">
+  <img src="apps/mobile/store-assets/01-today.png" width="235" alt="Today: nutrient targets and a recorded meal">
+  <img src="apps/mobile/store-assets/02-quick-log.png" width="235" alt="Quick Log: five ingredients with editable quantities and confirmed products">
+  <img src="apps/mobile/store-assets/03-discover.png" width="235" alt="Discover: illustrated recipes and meal-prep ideas">
 </p>
 
-Actual implementation screenshots using isolated test meals. This is an early development release, not an App Store release.
+Screenshots show the actual shared Expo interface in WebKit with fictional records. They are not physical-device captures.
 
-## What works
+## Project status
 
-- **Quick Log:** `200g chicken, 150g pasta, 15g pesto, 10g olive oil, 50g parmesan`. Live parsing, inline quantities, relevant suggestions, learned product choices and one-action logging with undo.
-- **Verified food records:** 2,121 captured Matvaretabellen foods, Norwegian and English search, aliases, explicit raw/cooked and dry/cooked distinctions. Unresolved ingredients block logging; missing nutrients stay unknown.
-- **Nutrition:** calories, protein, carbohydrates, fat and fiber calculated with decimal arithmetic. Optional dated personal targets show remaining and over amounts without changing food calculations.
-- **Recipes and batches:** custom servings, optional measured cooked weight, logging by servings or grams, and finite saved portions for later days. Creating a batch does not log it as eaten.
-- **Today and History:** one-tap usual meals and saved portions, daily diary, corrections, daily/weekly/monthly/lifetime exploration.
-- **Local persistence:** SQLite on native, IndexedDB in browsers; retained drafts, immutable historical nutrition snapshots, validated JSON backup and merge restore.
-- **Unified entry:** typing, voice controls and barcode camera entry share one review. See the runtime limits below.
+**Development preview.** A production iOS build has been uploaded to App Store Connect. There is no public TestFlight invitation or App Store download linked here yet, and App Review submission is not claimed. You can run the source locally today.
 
-## Run locally
+The Expo app in [`apps/mobile`](apps/mobile) is the active implementation. The original Swift/SwiftUI code remains available as [historical reference](docs/SWIFT_PROTOTYPE.md).
 
-Requirements: Git, **Node.js 24 LTS** and npm. The repository includes a lockfile. No API key or backend is needed for the core app.
+## What you can do
+
+| Workflow | Features |
+| --- | --- |
+| Log a meal | Natural-language typing, supported voice commands, barcode lookup, local label OCR, inline corrections and learned product choices |
+| Repeat familiar food | Named meal shortcuts, remembered amounts, one-action repeats and Undo |
+| Cook and save portions | Recipes, custom servings, measured cooked weights, finite portion inventory and logging by servings or grams |
+| Plan ahead | Separate planned and eaten meals, retained drafts, dated plans and explicit consumption |
+| Follow your targets | Optional calorie and macro goals, training/rest weekday profiles, remaining amounts and dated target history |
+| Explore progress | Daily, weekly, monthly and lifetime history, optional weigh-ins and complete-day markers |
+| Find food and ideas | English/Norwegian food search, 2,121 captured Matvaretabellen records and 12 original recipe ideas |
+| Keep your records | SQLite on iPhone, IndexedDB in browsers, local recovery copies and validated export/merge restore |
+
+Food calculations use decimal arithmetic and source records. Missing nutrients stay unknown. Historical nutrition snapshots survive later edits. Important raw/cooked and dry/cooked differences stay explicit; the app does not invent cooking yield, absorbed oil or extra ingredients.
+
+## Getting started
+
+Use **Node.js 24 LTS**, npm and Git. No backend or API key is needed for the offline diary and catalog.
 
 ```sh
 git clone https://github.com/rolfe099-sketch/touche-grasse.git
@@ -34,11 +51,11 @@ npm ci
 npm run web
 ```
 
-Open the address Expo prints. If port 8081 is busy, run `npx expo start --web --port 8082`.
+Open the address printed by Expo. To choose another port, use `npm run web -- --port 8082`.
 
-For phone development, run `npm start` and follow Expo's current instructions for your device and the pinned SDK. The project uses Expo SDK 54. **Direct native speech needs a development build** containing `expo-speech-recognition`; it is not available in Expo Go. Check runtime compatibility before upgrading dependencies.
+For iPhone development, read the [device guide](docs/IPHONE_TESTING.md). Direct native speech and label OCR require a native build containing their modules; Expo Go does not provide the complete experience. Never reuse another developer's LAN address or signing credentials.
 
-## Test and build
+## Development and checks
 
 From `apps/mobile`:
 
@@ -50,49 +67,39 @@ npm run build:web
 npm run preview
 ```
 
-The preview runs at `http://127.0.0.1:4173`. In a second terminal:
+The exported preview runs at `http://127.0.0.1:4173`. In a second terminal, run browser checks:
 
 ```sh
-npx playwright install chromium
+npx playwright install chromium webkit
 npm run test:e2e
+npm run test:iphone:web
 ```
 
-The browser suite tests parsing, corrections, learned matches, persistence, backup restore, targets, historical snapshots, repeat/undo, portions and layout at iPhone dimensions. Tests use isolated browser contexts and synthetic diaries built from the actual catalog. CI also runs the browser export and tests.
+CI checks types, lint, unit tests, the real SQLite/IndexedDB adapters, web export, Chromium and iPhone-sized WebKit workflows. Tests use isolated synthetic diaries. Browser checks and signed-build success do not establish physical iPhone behavior; the [device checklist](docs/IPHONE_TESTING.md) records that distinction.
 
-Latest local verification (4 November 2026): **112 unit/storage tests and 32 browser tests passed**; one historical baseline-capture test is intentionally skipped. TypeScript and ESLint passed. These are browser/source checks, not physical iPhone certification.
+See [the development guide](docs/DEVELOPMENT.md) for project structure, storage rules and test scope.
 
-The exported web app supports an offline reload after its first successful online load. Expo's development server does not install the service worker. Browser data belongs to its origin: different hosts and ports have separate libraries. Export/restore to transfer data, and keep backups before changing origins or clearing browser storage.
+## Limits to know
 
-## Current limits
+- Speech availability, accuracy and processing location depend on the operating system or browser. Barcode lookup requires internet access and review of the package values.
+- The bundled food catalog is a dated snapshot. Packaged-food coverage and nutrient completeness vary.
+- Recovery copies stay on the same device or browser origin. Export elsewhere before uninstalling, clearing storage or moving between hosts/ports. Backup files contain personal data and are not encrypted by the app.
+- There is no cloud synchronization. Goal estimates are editable starting points, not automatic coaching. The planner does not reserve stock; its recipe/batch selectors currently use servings, while Library retains measured gram controls.
 
-- Physical iPhone behavior, permissions, native speech and camera scanning still require device testing. No signed native binary or app-store distribution is included.
-- Barcode matching currently uses previously saved barcodes. Remote product lookup and nutrition-label OCR are not implemented.
-- Voice uses platform/browser speech recognition; availability, processing location and accuracy depend on the runtime. Commands cover implemented meal/recipe operations, not unrestricted assistant behavior.
-- There is no cloud sync. JSON exports can contain personal diary data and photos and are not encrypted by the app.
-- Food data is a dated snapshot, not a live product database. The app does not infer cooking yield or oil absorption.
+[Feature behavior and verification notes →](docs/README.md)
 
-## Repository
+## Contributing
 
-| Path | Purpose |
-| --- | --- |
-| [`apps/mobile`](apps/mobile) | Primary Expo app, domain, storage adapters, tests and build scripts |
-| [`Packages/ToucheGrasseCore`](Packages/ToucheGrasseCore) | Original Swift domain and SQLite implementation |
-| [`ToucheGrasse`](ToucheGrasse) | Original SwiftUI prototype, preserved for reference |
-| [`Fixtures`](Fixtures) | Captured official food responses and reproducibility manifests |
-| [`docs`](docs) | Integration notes, screenshots and legacy native documentation |
+Bug reports, food-matching examples, accessibility improvements and focused pull requests are welcome. Start with [Contributing](CONTRIBUTING.md), the [Roadmap](ROADMAP.md) and our [Code of Conduct](CODE_OF_CONDUCT.md). The project is maintained by [@rolfe099-sketch](https://github.com/rolfe099-sketch); response times depend on availability.
 
-The Expo app is the active implementation. Root-level architecture/status documents and the [Swift prototype guide](docs/SWIFT_PROTOTYPE.md) include historical milestones and should not be read as current Expo feature descriptions.
+Use the [issue forms](https://github.com/rolfe099-sketch/touche-grasse/issues/new/choose) for reproducible bugs and proposals. Report vulnerabilities through the [private security contact](SECURITY.md). Never post personal diary backups, recordings, credentials or signing files in public.
 
-## Contribute and support
+For app support, email [support@eriksenlabs.com](mailto:support@eriksenlabs.com). If you would like to support development, [buy me a coffee](https://buymeacoffee.com/endoftheend). Donations are optional and do not unlock features.
 
-Bug reports, matching improvements, accessibility fixes and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), [ROADMAP.md](ROADMAP.md) and [SECURITY.md](SECURITY.md). Never attach your personal backup or credentials to a public issue.
+## License and acknowledgements
 
-If Touche Grasse helps you, [buy me a coffee](https://buymeacoffee.com/endoftheend). Donations are optional and do not unlock features.
+Original project code is licensed under **AGPL-3.0-only**. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md) for the separate terms covering data, fonts, logos and dependencies.
 
-## License and attribution
+Food composition records are attributed to **Matvaretabellen, Mattilsynet**, captured on 22 October 2026, with source IDs and provenance retained. The software license does not relicense food data. [Official data/API information](https://matvaretabellen.mattilsynet.io/en/api/).
 
-Original project code is licensed under **AGPL-3.0-only**; see [LICENSE](LICENSE). Modified versions conveyed to others, and modified versions used to interact with users over a network, carry the license's source-sharing requirements. Third-party data, fonts, logos and dependencies retain their own terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-Food composition data: **Matvaretabellen, Mattilsynet**, captured 22 October 2026, with source identifiers and provenance preserved. [Official API documentation](https://matvaretabellen.mattilsynet.io/en/api/) requests attribution and describes local caching. The software license does not relicense that data.
-
-Inspired by the community-owned approach of [openGym](https://github.com/DuarteSantos8/openGym). Touche Grasse is independent and is not affiliated with openGym.
+Inspired by the community-owned approach of [openGym](https://github.com/DuarteSantos8/openGym). Touche Grasse is an independent project and is not affiliated with openGym.

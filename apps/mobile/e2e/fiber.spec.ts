@@ -44,8 +44,11 @@ test('manual fiber scales per 100ml and zero remains different from an unknown v
   await page.getByRole('textbox', { name: 'Food name', exact: true }).fill('Fiber drink - test fixture');
   await page.getByRole('button', { name: 'Per 100 ml', exact: true }).click();
   for (const [label, value] of [['Energy · kcal', '40'], ['Protein · g', '0'], ['Carbs · g', '10'], ['Fat · g', '0'], ['Fiber · g', '1.25']]) await page.getByRole('textbox', { name: label, exact: true }).fill(value);
+  // A reference-unit change clears the amount rather than treating grams as ml.
+  await expect(page.getByRole('textbox', { name: 'Amount to add · ml', exact: true })).toHaveValue('');
+  await page.getByRole('textbox', { name: 'Amount to add · ml', exact: true }).fill('250');
   await page.getByRole('button', { name: 'Confirm and add', exact: true }).click();
-  await page.getByTestId('quantity-0').fill('250'); await expect(page.getByTestId('meal-nutrition')).toContainText('Fiber 3.1 g');
+  await expect(page.getByTestId('quantity-0')).toHaveValue('250'); await expect(page.getByTestId('meal-nutrition')).toContainText('Fiber 3.1 g');
   await page.getByTestId('commit-food').click(); await expect(page.getByTestId('today-fiber')).toHaveText('3.1 g');
   expect((await archive(page)).logs[0].nutrition.fiber).toBe('3.125');
   await page.goto('/'); await page.getByRole('button', { name: 'Undo last log', exact: true }).click();
@@ -57,7 +60,9 @@ test('manual fiber scales per 100ml and zero remains different from an unknown v
 test('a legacy backup retains unknown fiber and exact historical snapshots after restore and repeat', async ({ page }) => {
   await page.goto('/entry'); await page.getByTestId('quick-text').fill('150g pasta');
   await page.getByTestId('choice-0-mvt:05.016').click(); await page.getByTestId('commit-food').click();
+  await expect(page.getByTestId('today-fiber')).toHaveText('6 g');
   const legacy = await archive(page);
+  expect(legacy.logs).toHaveLength(1);
   for (const food of legacy.foods) { delete food.nutrition.fiber; delete food.provenance.nutrientSources.fiber; }
   for (const log of legacy.logs) { delete log.nutrition.fiber; delete log.snapshot.ingredient.food.nutrition.fiber; delete log.snapshot.ingredient.food.provenance.nutrientSources.fiber; }
   // A fresh browser context models an existing installation restoring a pre-fiber archive.

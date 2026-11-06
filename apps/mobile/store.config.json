@@ -1,0 +1,43 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "version": "0.1.0",
+    "release": {
+      "automaticRelease": false
+    },
+    "info": {
+      "en-US": {
+        "title": "Touche Grasse",
+        "subtitle": "Fast food and macro logging",
+        "description": "Log meals quickly and keep your nutrition records with you.\n\nType a whole meal, use voice commands on supported devices, scan a barcode or review a nutrition-label photo. Resolve products and amounts together before logging. Calories, protein, carbohydrates, fat and fiber come from food records; missing values stay unknown.\n\nQUICK EVERYDAY LOGGING\nAdd multiple ingredients in one entry. Remember confirmed products, repeat usual meals, correct quantities and undo a log.\n\nRECIPES AND MEAL PREP\nBuild recipes, split batches into servings and keep remaining portions for later. Measured cooked weights support gram-based portions. Saving a batch does not log it as eaten.\n\nPLAN AND TRACK\nKeep planned meals separate from eaten food. Set optional personal targets and recurring training/rest-day profiles. Explore daily, weekly, monthly and lifetime history, mark completed days and record optional weigh-ins. Starting calorie estimates are editable estimates, not medical advice.\n\nFOOD AND IDEAS\nSearch Norwegian food data with English and Norwegian queries. Explore original meal ideas, keep personal recipes and review packaged-product information before saving it.\n\nYOUR RECORDS\nNo app account, ads or subscription. Diary records stay in local app storage. Export backups and keep recovery copies. Optional system speech services and barcode lookups may use network services as explained in our privacy policy.\n\nFree and open source.",
+        "keywords": [
+          "calorie",
+          "macro",
+          "protein",
+          "fiber",
+          "nutrition",
+          "food",
+          "meal",
+          "recipe",
+          "fitness",
+          "tracker"
+        ],
+        "supportUrl": "https://rolfe099-sketch.github.io/touche-grasse/support/",
+        "privacyPolicyUrl": "https://rolfe099-sketch.github.io/touche-grasse/privacy/",
+        "marketingUrl": "https://rolfe099-sketch.github.io/touche-grasse/",
+        "screenshots": {
+          "APP_IPHONE_67": [
+            "./store-assets/01-today.png",
+            "./store-assets/02-quick-log.png",
+            "./store-assets/03-discover.png",
+            "./store-assets/04-planner.png"
+          ]
+        }
+      }
+    },
+    "copyright": "2026 Rolf Eriksen",
+    "categories": [
+      "HEALTH_AND_FITNESS"
+    ]
+  }
+}

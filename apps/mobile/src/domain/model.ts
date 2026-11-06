@@ -1,5 +1,6 @@
 import { Decimal } from 'decimal.js';
 import { z } from 'zod';
+import { calendarDaySchema } from './calendarDay';
 import { ingredientText } from './naturalInput';
 
 export const D = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_EVEN, toExpNeg: -50, toExpPos: 50 });
@@ -15,7 +16,9 @@ export const foodSchema = z.object({
   barcode: z.string().regex(/^\d{8,14}$/).nullable().optional(), referenceUnit: z.enum(['g', 'ml']), nutrition: nutritionSchema,
   gramsPerMilliliter: decimalSchema.nullable().optional(), gramsPerMeasure: z.record(z.string(), decimalSchema),
   provenance: z.object({ source: z.enum(['matvaretabellen', 'manual', 'confirmedOCR', 'openFoodFacts']), sourceID: z.string(),
-    sourceURL: z.string().optional(), retrievedAt: z.string(), nutrientSources: z.record(z.string(), z.string()) }),
+    sourceURL: z.string().optional(), retrievedAt: z.string(), nutrientSources: z.record(z.string(), z.string()),
+    labelScan: z.object({ engine: z.enum(['platform', 'tesseract']), scannedAt: z.iso.datetime(), confirmedAt: z.iso.datetime(), basis: z.string().max(300), originalNutrition: nutritionSchema }).optional(),
+    license: z.literal('ODbL-1.0').optional(), labelReview: z.object({ confirmedAt: z.iso.datetime(), originalName: z.string().max(300), originalNutrition: nutritionSchema, originalReferenceUnit: z.enum(['g', 'ml']).nullable(), nutritionSource: z.string().max(200) }).optional() }),
 });
 export const ingredientSchema = z.object({ id: z.string(), food: foodSchema, quantity: decimalSchema, unit: unitSchema });
 export const recipeSchema = z.object({
@@ -23,16 +26,18 @@ export const recipeSchema = z.object({
   steps: z.array(z.string().max(5000)).max(100), servings: decimalSchema, cookedWeightGrams: decimalSchema.nullable(), favorite: z.boolean(),
   photo: z.string().max(3000000).regex(/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/).optional(),
 });
-export const lineSchema = z.object({ id: z.string(), query: z.string().max(500), quantityText: z.string().max(100), unit: unitSchema, food: foodSchema.nullable() });
+export const lineSchema = z.object({ id: z.string(), query: z.string().max(500), quantityText: z.string().max(100), unit: unitSchema, food: foodSchema.nullable(), entrySource: z.enum(['barcode', 'product']).optional() });
 export const splitPlanSchema = z.object({ name: z.string().max(300), servingsText: z.string().max(100), cookedWeightText: z.string().max(100) });
 export type SplitPlan = z.infer<typeof splitPlanSchema>;
 export const draftSchema = z.object({ id: z.string(), text: z.string().max(10000), lines: z.array(lineSchema).max(200), meal: z.enum(meals),
-  textRows: z.array(lineSchema.omit({ food: true })).max(200).optional(), splitPlan: splitPlanSchema.optional(), recipeName: z.string().max(300).optional() });
+  loggingDate: calendarDaySchema.optional(), textRows: z.array(lineSchema.omit({ food: true })).max(200).optional(), splitPlan: splitPlanSchema.optional(), recipeName: z.string().max(300).optional() });
 export const snapshotSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('food'), ingredient: ingredientSchema }),
   z.object({ kind: z.literal('recipe'), recipe: recipeSchema, quantity: decimalSchema, unit: z.enum(['servings', 'g']) }),
 ]);
-export const logValueSchema = z.object({ recordedAt: z.iso.datetime(), meal: z.enum(meals), snapshot: snapshotSchema, nutrition: nutritionSchema });
+// Older correction trails sometimes stored the complete entry. Retain their
+// known identity fields instead of silently stripping them during an upgrade.
+export const logValueSchema = z.object({ id: z.string().optional(), batchId: z.string().optional(), preparedBatchId: z.string().min(1).optional(), recordedAt: z.iso.datetime(), timePrecision: z.literal('day').optional(), meal: z.enum(meals), snapshot: snapshotSchema, nutrition: nutritionSchema, batchRecipe: recipeSchema.optional() });
 export const logSchema = logValueSchema.extend({ id: z.string(), batchId: z.string(), preparedBatchId: z.string().min(1).optional(), corrections: z.array(z.object({ correctedAt: z.iso.datetime(), previous: logValueSchema })).max(200).optional() });
 export const profileSchema = z.object({ firstUsedAt: z.iso.datetime() });
 export const recipeDraftSchema = z.object({ recipe: recipeSchema.extend({ name: z.string().max(300), ingredients: z.array(ingredientSchema.extend({ quantity: z.string().max(100) })).max(200), servings: z.string().max(100), cookedWeightGrams: z.string().max(100).nullable() }), instructions: z.string().max(500000), splitPlan: splitPlanSchema.optional() });
@@ -119,7 +124,7 @@ export function lineIngredient(line: Line): Ingredient {
   foodNutrition(line.food, quantity, line.unit);
   return { id: line.id, food: line.food, quantity, unit: line.unit };
 }
-export function emptyDraft(id: IdFactory): Draft { return { id: id(), text: '', lines: [], meal: 'Middag' }; }
+export function emptyDraft(id: IdFactory, meal: Meal = 'Middag'): Draft { return { id: id(), text: '', lines: [], meal }; }
 export function parseEntry(text: string, id: IdFactory): Line[] {
   const parts = ingredientText(text).split(/(?<!\d),|,(?!\d)|[;\n]/).map(s => s.trim()).filter(Boolean);
   if (text.length > 10000 || parts.length > 200) throw new Error('Enter up to 200 ingredients and 10,000 characters.');
