@@ -32,8 +32,9 @@ export default function Search() {
   function select(food: Food, quantity = '100') {
     setDraft({ ...draft, lines: [...draft.lines, { id: repo.id(), query: food.name, quantityText: quantity, unit: food.referenceUnit, food }] }); router.push('/entry');
   }
-  async function saveIdea(idea: RecipeIdea, action: 'save' | 'edit' | 'prepare') {
+  async function saveIdea(idea: RecipeIdea, action: 'save' | 'edit' | 'prepare' | 'plan') {
     const ok = await app.run(() => repo.saveRecipeIdea(idea.recipe), action === 'save' ? 'Recipe saved to Library' : undefined);
+    if (ok && action === 'plan') { router.push({ pathname: '/planner', params: { recipe: recipeIdeaCopyId(idea.recipe) } }); return; }
     if (ok && action !== 'save') router.push({ pathname: '/recipe', params: { id: recipeIdeaCopyId(idea.recipe), ...(action === 'prepare' ? { prepare: '1' } : {}) } });
   }
   const foodHeader = <View style={{ gap: 10, paddingBottom: 8 }}>
@@ -79,7 +80,7 @@ export default function Search() {
       ListEmptyComponent={<View style={{ gap: 10, paddingTop: 15 }}><Text style={styles.body}>{filtered ? 'No foods match these limits.' : 'No matches. Try another name, or add your own food.'}</Text>{filtered && <TextButton label="Clear filters" onPress={() => { setRule(emptyNutritionRule); setSort('Relevant'); }} />}<Button label="Create a food" onPress={() => router.push('/manual')} /></View>}
       ListFooterComponent={<Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 17, marginTop: 20 }}>Curated ingredient picks · Search all foods in English or Norwegian. Source: Matvaretabellen. Raw and cooked weights stay separate.</Text>} />
       : <FlatList data={ideas} keyExtractor={i => i.slug} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" initialNumToRender={8} windowSize={5} contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 30 }} ListHeaderComponent={ideaHeader}
-        renderItem={({ item, index }) => <DiscoverRecipe idea={item} featured={index === 0 && !ideaQuery.trim() && ideaFilter === 'All ideas' && !savedOnly} expanded={openIdea === item.slug} onExpand={() => { Keyboard.dismiss(); setOpenIdea(openIdea === item.slug ? undefined : item.slug); }} saved={repo.recipes.some(r => r.id === recipeIdeaCopyId(item.recipe))} disabled={app.busy} onSave={() => void saveIdea(item, 'save')} onEdit={() => void saveIdea(item, 'edit')} onPrepare={() => void saveIdea(item, 'prepare')} />}
+        renderItem={({ item, index }) => <DiscoverRecipe idea={item} featured={index === 0 && !ideaQuery.trim() && ideaFilter === 'All ideas' && !savedOnly} expanded={openIdea === item.slug} onExpand={() => { Keyboard.dismiss(); setOpenIdea(openIdea === item.slug ? undefined : item.slug); }} saved={repo.recipes.some(r => r.id === recipeIdeaCopyId(item.recipe))} disabled={app.busy} onSave={() => void saveIdea(item, 'save')} onEdit={() => void saveIdea(item, 'edit')} onPrepare={() => void saveIdea(item, 'prepare')} onPlan={() => void saveIdea(item, 'plan')} />}
         ListEmptyComponent={<View style={{ paddingVertical: 20, gap: 8 }}><Text style={styles.body}>No ideas match. Try another ingredient or filter.</Text><TextButton label="Show all ideas" onPress={() => { setIdeaQuery(''); setIdeaFilter('All ideas'); setSavedOnly(false); }} /></View>}
         ListFooterComponent={<Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 17, marginTop: 20 }}>{recipeIdeas.length} original recipes · Available offline. Cooking times are estimates. Nutrition uses the stated food records; cooked yield is never assumed.</Text>} />}
   </Screen>;

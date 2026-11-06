@@ -15,7 +15,7 @@ import { DailyNutrition } from '../../src/ui/DailyNutrition';
 import { Diary } from '../../src/ui/Diary';
 import { CalendarPicker } from '../../src/ui/Calendar';
 import { TargetEditor } from '../../src/ui/Targets';
-import { targetOn } from '../../src/domain/targets';
+import { TodayPlans } from '../../src/ui/Planner';
 import { RepeatMealReview } from '../../src/ui/RepeatMealReview';
 import { MealCorrectionHistory } from '../../src/ui/MealEditor';
 import { MealShortcuts } from '../../src/ui/MealShortcuts';
@@ -39,10 +39,10 @@ export default function Today() {
       <Text accessibilityRole="header" style={styles.title}>{isToday ? 'Today' : dateLabel(date, { weekday: 'long' })}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}><Text style={{ flexShrink: 1, fontSize: 14, color: colors.secondary }}>{dateLabel(date, { weekday: 'short', day: 'numeric', month: 'long' })}</Text><Icon name="calendar" size={12} color={colors.secondary} /></View>
     </Pressable>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0 }}><IconButton name="settings" label="Your data and settings" onPress={() => router.push('/settings')} /></View>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0 }}><IconButton name="calendar" label="Meal planner" onPress={() => router.push('/planner')} /><IconButton name="settings" label="Your data and settings" onPress={() => router.push('/settings')} /></View>
   </>}>
     <DayStrip date={date} loggedDays={loggedDays} onSelect={setDate} />
-    <DailyNutrition complete={day?.complete} targets={targetOn(repo.targets, dayKey(date))?.values} onTargets={isToday ? () => setEditingTargets(!editingTargets) : undefined} value={nutrition} entries={logs.length} meals={day?.meals ?? 0} onTrend={() => router.push({ pathname: '/history', params: { date: dayKey(date), scope: 'week' } })} />
+    <DailyNutrition targetLabel={repo.targetFor(dayKey(date))?.dayType === 'training' ? 'Training targets' : repo.targetFor(dayKey(date))?.dayType === 'rest' ? 'Rest targets' : undefined} complete={day?.complete} targets={repo.targetFor(dayKey(date))?.values} onTargets={isToday ? () => setEditingTargets(!editingTargets) : undefined} value={nutrition} entries={logs.length} meals={day?.meals ?? 0} onTrend={() => router.push({ pathname: '/history', params: { date: dayKey(date), scope: 'week' } })} />
     <MealShortcuts onLogged={() => setDate(new Date())} />
     {editingTargets && isToday && <TargetEditor onClose={() => setEditingTargets(false)} />}
     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, padding: 4, paddingLeft: 12, gap: 3, borderRadius: 9, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, overflow: 'hidden' }}>
@@ -60,6 +60,7 @@ export default function Today() {
         {quick && <Button label={quick.unit === 'g' ? `Log ${quick.quantity} g` : `Log ${quick.quantity}`} icon="plus" compact primary accessibilityLabel={quick.quantity === '1' && quick.unit === 'servings' ? `Log one saved serving of ${batch.recipe.name}` : `Log ${quick.quantity} saved ${quick.unit} of ${batch.recipe.name}`} disabled={busy} onPress={() => void run(() => repo.logPreparedBatch(batch.id, quick.quantity, quick.unit), 'Saved portion logged').then(ok => { if (ok) setDate(new Date()); })} />}
       </View>;
     })}</View></View>}
+    <TodayPlans date={dayKey(date)} />
     {!!usual.length && <View testID="frequent-meals" style={{ marginTop: 15 }}><Text style={[styles.label, { marginBottom: 7 }]}>Your usual meals</Text><View style={{ flexDirection: 'row', gap: 8 }}>{usual.map((batch, i) => <View key={batch[0].batchId} style={{ flex: 1 }}><Pressable testID="repeat-meal" accessibilityRole="button" accessibilityLabel={`Repeat ${mealLabel(batch[0].meal)} meal`} disabled={busy} onPress={() => void run(() => repo.repeatMeal(batch.map(log => log.id)), 'Whole meal logged for today').then(ok => { if (ok) setDate(new Date()); })} style={({ pressed }) => ({ minHeight: 66, borderWidth: 1, borderRadius: 6, borderColor: colors.line, padding: 11, backgroundColor: pressed ? colors.pressed : colors.surface, opacity: busy ? 0.4 : 1 })}><Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600' }}>↻ {mealLabel(batch[0].meal)} · {plural(batch.length, 'food')}</Text><Text numberOfLines={1} style={{ fontSize: 11, color: colors.secondary }}>{batch.map(logName).join(', ')}</Text><Text style={{ fontSize: 11, color: colors.secondary }}>{display(total(batch.map(log => log.nutrition)).kcal, 0)} kcal</Text></Pressable><TextButton label="Adjust" accessibilityLabel={`Adjust usual meal ${i + 1}`} disabled={busy || !!repo.quickEntry.repeatReview} onPress={() => void run(() => repo.startRepeatReview(batch.map(log => log.id)))} /></View>)}</View></View>}
     <Section title="Meal journal">{(!app.notice || !app.noticeUndo) && !!repo.undo.length ? <TextButton label={repo.undoLabel} disabled={busy} onPress={() => void run(() => repo.undoLast(), repo.undoNotice)} /> : <Text style={{ color: colors.secondary, fontSize: 12 }}>{dateLabel(date, { weekday: 'short' })}</Text>}</Section>
     {!logs.length && <View style={{ paddingVertical: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line }}><Text style={{ fontSize: 16, fontWeight: '600' }}>No meals logged</Text><Text style={{ fontSize: 13, color: colors.secondary, marginTop: 4 }}>Add food with the Log button below.</Text></View>}

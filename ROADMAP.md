@@ -4,6 +4,8 @@ The focus is fast, trustworthy logging. This list reflects implemented work and 
 
 ## Implemented
 
+- Optional guided goals and dated rest/training weekday profiles; a separate week meal planner with exact recipe/food snapshots, retained drafts, one-action consumption, finite-portion checks, cancellation and Undo. See [goals and meal planning](docs/GOALS_AND_MEAL_PLANNING.md). Native acceptance of these new flows remains pending.
+
 - Recipe-first Discover with 12 original offline recipes, illustrated browsing, direct save/prepare actions, saved-idea filtering, compact ingredients/method review and source-based nutrition. Ingredient exploration retains bilingual search, explicit reference units and inline amount edits. See [the Discover overhaul](docs/DISCOVER_OVERHAUL.md).
 
 - Live multi-ingredient Quick Log, verified English/Norwegian food matching, remembered product choices and explicit preparation ambiguity.

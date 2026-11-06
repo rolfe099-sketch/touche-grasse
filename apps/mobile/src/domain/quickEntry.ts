@@ -7,6 +7,7 @@ import { labelFormSchema } from './nutritionLabel';
 import { repeatReviewSchema } from './repeatMeal';
 import { mealEditSchema } from './mealEditor';
 import { weightDraftSchema } from './weight';
+import { planDraftSchema } from './mealPlanning';
 
 // References only: nutrients always come from the current verified Food record.
 export const voiceDraftSchema = z.object({ id: z.string().min(1).max(200), text: z.string().max(12000), locale: z.enum(['en-US', 'nb-NO']) });
@@ -15,6 +16,7 @@ export const quickEntrySchema = z.object({
   matches: z.record(z.string().max(500), z.object({ foodId: z.string().max(200), confirmedAt: z.iso.datetime() })),
   favorites: z.array(z.string().max(200)).max(20000),
   portionDrafts: portionDraftsSchema.optional(),
+  planDraft: planDraftSchema.optional(),
   lastMeal: z.enum(meals).optional(),
   entryMethod: z.enum(['text', 'voice', 'scan']).optional(),
   voiceDraft: voiceDraftSchema.nullable().optional(),

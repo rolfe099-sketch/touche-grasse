@@ -15,6 +15,8 @@ Actual implementation screenshots using isolated test meals. This is an early de
 
 ## What works
 
+- **Goals and meal planning:** optional cut/maintain/gain setup, editable rest/training weekday targets, and a week planner with retained drafts. Plans stay separate from eaten food, log in one action, and reopen with Undo. [Behavior, calculations and limits](docs/GOALS_AND_MEAL_PLANNING.md).
+
 - **Quick Log:** `200g chicken, 150g pasta, 15g pesto, 10g olive oil, 50g parmesan`. Live parsing, inline quantities, relevant suggestions, learned product choices and one-action logging with undo.
 - **Dates and meals:** inline Today/Yesterday/calendar destinations, selected-day logging from History, remembered meal choices and date-aware food commands. [Details](docs/LOGGING_DESTINATIONS.md).
 - **Whole-meal corrections:** move selected ingredients to another day or meal in one save, with exact snapshots, finite portions and persistent Undo. Refined destination, calendar and repeat controls keep logging compact. [Details and before/after screenshots](docs/LOGGING_CRAFT_AND_MEAL_CORRECTIONS.md).

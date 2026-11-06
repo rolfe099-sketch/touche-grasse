@@ -1,3 +1,5 @@
+import { GoalProgram, goalProgramSchema, resolveTargets, validateNewProgram } from './goals';
+import { checkPlanBatch, formItems, MealPlan, mealPlanSchema, plannedNutrition, PlanReview, planDraftSchema, planIsLogged, validatePlan, validatePlans, validatePlanDraft } from './mealPlanning';
 import { PortionReview, portionDraftAmount, portionDraftDate, portionFormSchema, portionReviewWritable, portionSlotSchema, validatePortionDrafts } from './portionDraft';
 import { parseArchive, utf8Size, validateEditableDrafts } from './archive';
 import { assertSupportedFields } from './compatibility';
@@ -24,6 +26,8 @@ function readStored<T>(schema: z.ZodType<T>, input: unknown): T {
 export class Repository {
   readonly index = new FoodIndex();
   targets: TargetChange[] = [];
+  goalPrograms: GoalProgram[] = [];
+  mealPlans: MealPlan[] = [];
   shortcuts: MealShortcut[] = [];
   dayReviews: DayReview[] = [];
   mealCorrections: MealCorrection[] = [];
@@ -74,6 +78,8 @@ export class Repository {
       else if (record.kind === 'preparedBatch') this.preparedBatches.push(validateBatch(readStored(preparedBatchSchema, record.value)));
       else if (record.kind === 'quickEntry') this.quickEntry = readStored(quickEntrySchema, record.value);
       else if (record.kind === 'targetChange') this.targets.push(readStored(targetChangeSchema, record.value));
+      else if (record.kind === 'goalProgram') this.goalPrograms.push(readStored(goalProgramSchema, record.value));
+      else if (record.kind === 'mealPlan') this.mealPlans.push(validatePlan(readStored(mealPlanSchema, record.value)));
       else if (record.kind === 'mealShortcut') this.shortcuts.push(validateShortcut(readStored(mealShortcutSchema, record.value)));
       else if (record.kind === 'mealCorrection') { const correction = readStored(mealCorrectionSchema, record.value); [...correction.previous, ...correction.applied].forEach(validateLogCalculation); this.mealCorrections.push(correction); }
       else if (record.kind === 'correctionUndo') this.correctionUndo = readStored(z.string().nullable(), record.value);
@@ -85,6 +91,8 @@ export class Repository {
     validateEditableDrafts(this.draft, this.recipeDrafts, 'diary');
     assertBatchCapacity(this.preparedBatches, this.logs);
     validatePortionDrafts(this.quickEntry.portionDrafts, this.preparedBatches);
+    validatePlans(this.mealPlans, this.preparedBatches);
+    validatePlanDraft(this.quickEntry.planDraft, this.preparedBatches, this.mealPlans);
     this.sortAndIndex();
     if (!loaded.records.some(record => record.kind === 'profile') || earliest !== this.profile.firstUsedAt) await this.commit([put('profile', 'identity', { firstUsedAt: earliest })]);
   }
@@ -196,11 +204,88 @@ export class Repository {
     const effectiveOn = dayKey(at);
     return this.serialized(async () => {
       // Keep every revision; same-day saves have an unambiguous order even within one millisecond.
-      const latest = Math.max(0, ...this.targets.map(change => Date.parse(change.recordedAt)));
+      const latest = Math.max(0, ...[...this.targets, ...this.goalPrograms].map(change => Date.parse(change.recordedAt)));
       const change = targetChangeSchema.parse({ id: this.id(), effectiveOn, recordedAt: new Date(Math.max(at.getTime(), latest + 1)).toISOString(), values });
       await this.commit([put('targetChange', change.id, change)]);
       this.targets = [...this.targets, change];
       return change;
+    });
+  }
+  targetFor(date: string) { return resolveTargets(this.targets, this.goalPrograms, date); }
+  saveGoalProgram(input: Omit<GoalProgram, 'id' | 'recordedAt'>, now = new Date()) {
+    const value = validateNewProgram({ ...structuredCopy(input), id: this.id(), recordedAt: now.toISOString() }, now);
+    return this.serialized(async () => {
+      if (this.goalPrograms.length >= 20000) throw new Error('This diary has reached its goal-history limit. Export a backup.');
+      const latest = Math.max(0, ...[...this.targets, ...this.goalPrograms].map(p => Date.parse(p.recordedAt)));
+      const program = { ...value, recordedAt: new Date(Math.max(now.getTime(), latest + 1)).toISOString() };
+      await this.commit([put('goalProgram', program.id, program)]); this.goalPrograms = [...this.goalPrograms, program]; return program;
+    });
+  }
+  private planReviewWritable(review: PlanReview) {
+    const slot = this.quickEntry.planDraft;
+    return !slot ? !review.baseId : slot.id === review.id ? slot.value !== null : slot.id === review.baseId;
+  }
+  savePlanDraft(input: PlanReview) {
+    const value = planDraftSchema.parse(structuredCopy(input));
+    return this.serialized(async () => {
+      if (!this.planReviewWritable(input)) return false;
+      validatePlanDraft(value, this.preparedBatches, this.mealPlans);
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, planDraft: value });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences; return true;
+    });
+  }
+  clearPlanDraft(input: PlanReview) {
+    planDraftSchema.parse({ id: input.id, value: null });
+    return this.serialized(async () => {
+      if (!this.planReviewWritable(input)) return false;
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, planDraft: { id: input.id, value: null } });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences; return true;
+    });
+  }
+  saveMealPlan(input: PlanReview) {
+    const review = { ...input, ...planDraftSchema.parse(structuredCopy(input)) };
+    return this.serialized(async () => {
+      if (!review.value) throw new Error('Choose food for your plan.');
+      const form = review.value, existing = this.mealPlans.find(p => p.id === (form.editingId ?? review.id));
+      if (!form.editingId && existing) return structuredCopy(existing);
+      if (!existing && this.mealPlans.length >= 20000) throw new Error('This diary has reached its meal-plan limit. Export a backup.');
+      if (!this.planReviewWritable(review)) throw new Error('This plan draft changed. Reopen the planner.');
+      if (form.editingId && (!existing || existing.cancelledAt || planIsLogged(existing, this.logs))) throw new Error('Only pending plans can be edited. Create a new plan instead.');
+      const items = formItems(form), at = new Date().toISOString();
+      const plan = validatePlan({ id: existing?.id ?? review.id, name: form.name, date: form.dateText, meal: form.meal, items, nutrition: plannedNutrition(items), sourceBatchId: form.sourceBatchId, createdAt: existing?.createdAt ?? at, updatedAt: at, cancelledAt: null, loggedAt: null, logIds: [], receipts: existing?.receipts ?? [] });
+      checkPlanBatch(plan, this.preparedBatches);
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, planDraft: { id: review.id, value: null } });
+      await this.commit([put('mealPlan', plan.id, plan), put('quickEntry', 'preferences', preferences)]);
+      this.mealPlans = [...this.mealPlans.filter(p => p.id !== plan.id), plan]; this.quickEntry = preferences; return structuredCopy(plan);
+    });
+  }
+  cancelMealPlan(id: string, cancelled = true) {
+    return this.serialized(async () => {
+      const plan = this.mealPlans.find(p => p.id === id); if (!plan) throw new Error('This plan is unavailable.');
+      if (planIsLogged(plan, this.logs)) throw new Error('This plan already has diary entries. Manage the eaten food in History.');
+      const at = new Date().toISOString(), updated = { ...plan, cancelledAt: cancelled ? at : null, updatedAt: at };
+      const clearsDraft = this.quickEntry.planDraft?.value?.editingId === id;
+      const preferences = clearsDraft ? quickEntrySchema.parse({ ...this.quickEntry, planDraft: { id: this.quickEntry.planDraft!.id, value: null } }) : this.quickEntry;
+      await this.commit([put('mealPlan', id, updated), ...(clearsDraft ? [put('quickEntry', 'preferences', preferences)] : [])]);
+      this.mealPlans = this.mealPlans.map(p => p.id === id ? updated : p); this.quickEntry = preferences;
+    });
+  }
+  logMealPlan(id: string, destinationDate?: string, now = new Date()) {
+    return this.serialized(async () => {
+      const plan = this.mealPlans.find(p => p.id === id); if (!plan || plan.cancelledAt) throw new Error('This plan is unavailable.');
+      if (planIsLogged(plan, this.logs)) return [];
+      if (this.quickEntry.planDraft?.value?.editingId === id) throw new Error('Finish or cancel this plan edit before logging it.');
+      if (plan.receipts.length >= 200) throw new Error('This plan has reached its logging limit. Create a new plan.');
+      const date = destinationDate ?? plan.date;
+      if (date > dayKey(now)) throw new Error('Future meals stay planned. Choose Eat today if you have eaten this food.');
+      const at = loggingTime(date, now), batchId = this.id();
+      checkPlanBatch(plan, this.preparedBatches, this.logs);
+      const entries: LogEntry[] = plan.items.map(snapshot => ({ id: this.id(), batchId, recordedAt: at.toISOString(), ...(date !== dayKey(now) ? { timePrecision: 'day' as const } : {}), meal: plan.meal, snapshot: structuredCopy(snapshot), nutrition: snapshotNutrition(snapshot), ...(plan.sourceBatchId ? { preparedBatchId: plan.sourceBatchId } : {}) }));
+      assertBatchCapacity(this.preparedBatches, [...this.logs, ...entries]);
+      const logIds = entries.map(e => e.id), loggedAt = now.toISOString();
+      const updated = validatePlan({ ...plan, loggedAt, logIds, receipts: [...plan.receipts, { at: loggedAt, ids: logIds }], updatedAt: loggedAt });
+      await this.commit([...entries.map(e => put('log', e.id, e)), put('mealPlan', id, updated), put('undo', 'latest', logIds), put('deletionUndo', 'latest', [])]);
+      this.logs = [...this.logs, ...entries]; this.mealPlans = this.mealPlans.map(p => p.id === id ? updated : p); this.undo = logIds; this.deletionUndo = []; this.sortAndIndex(); return entries;
     });
   }
   saveEntryMethod(entryMethod: 'text' | 'voice' | 'scan') {
@@ -545,8 +630,9 @@ export class Repository {
         this.logs = restored; this.undo = []; this.deletionUndo = []; this.sortAndIndex(); return;
       }
       const ids = new Set(this.undo);
-      await this.commit([...this.undo.map(id => ({ type: 'delete' as const, key: `log:${id}` })), put('undo', 'latest', []), put('deletionUndo', 'latest', [])]);
-      this.logs = this.logs.filter(l => !ids.has(l.id)); this.undo = []; this.deletionUndo = []; this.sortAndIndex();
+      const reopenedPlans = this.mealPlans.map(p => p.loggedAt && p.logIds.every(id => ids.has(id)) ? { ...p, loggedAt: null, logIds: [], updatedAt: new Date().toISOString() } : p);
+      await this.commit([...reopenedPlans.filter((p, i) => p !== this.mealPlans[i]).map(p => put('mealPlan', p.id, p)), ...this.undo.map(id => ({ type: 'delete' as const, key: `log:${id}` })), put('undo', 'latest', []), put('deletionUndo', 'latest', [])]);
+      this.mealPlans = reopenedPlans; this.logs = this.logs.filter(l => !ids.has(l.id)); this.undo = []; this.deletionUndo = []; this.sortAndIndex();
     });
   }
   correctLog(id: string, patch: { quantity: string; unit?: Unit | 'servings'; recordedAt?: string; meal?: Meal; timePrecision?: 'day' | null }) {
@@ -683,7 +769,7 @@ export class Repository {
   async waitForWrites() { await this.queue; }
   async exportJSON() {
     await this.queue;
-    const json = JSON.stringify({ format: 'touche-grasse', version: 2, profile: this.profile, foods: this.foods, logs: this.logs, recipes: this.recipes, draft: this.draft, recipeDrafts: this.recipeDrafts, quickEntry: this.quickEntry, preparedBatches: this.preparedBatches, targets: this.targets, shortcuts: this.shortcuts, dayReviews: this.dayReviews, mealCorrections: this.mealCorrections, weighIns: this.weighIns }, null, 2);
+    const json = JSON.stringify({ format: 'touche-grasse', version: 2, profile: this.profile, foods: this.foods, logs: this.logs, recipes: this.recipes, draft: this.draft, recipeDrafts: this.recipeDrafts, quickEntry: this.quickEntry, preparedBatches: this.preparedBatches, targets: this.targets, goalPrograms: this.goalPrograms, mealPlans: this.mealPlans, shortcuts: this.shortcuts, dayReviews: this.dayReviews, mealCorrections: this.mealCorrections, weighIns: this.weighIns }, null, 2);
     if (utf8Size(json) > 50_000_000) throw new Error('This backup exceeds 50 MB. Remove or reduce recipe photos before exporting.');
     return json;
   }
@@ -703,6 +789,18 @@ export class Repository {
       const dayReviews = merge(backup.dayReviews ?? [], this.dayReviews);
       const mealCorrections = merge(backup.mealCorrections ?? [], this.mealCorrections);
       const weighIns = merge(backup.weighIns ?? [], this.weighIns);
+      const goalDates = new Set([...this.goalPrograms, ...this.targets].map(p => p.effectiveOn));
+      const goalPrograms = merge((backup.goalPrograms ?? []).filter(p => !goalDates.has(p.effectiveOn)), this.goalPrograms);
+      const mealPlans = merge(backup.mealPlans ?? [], this.mealPlans).map(plan => {
+        // Local edits/tombstones win, but eaten receipts are additive evidence.
+        // Restoring a later consumed copy into an older pending plan must not
+        // make that already-eaten food available for a second plan log.
+        const incoming = backup.mealPlans?.find(p => p.id === plan.id);
+        if (!incoming) return plan;
+        const receipts = [...new Map([...incoming.receipts, ...plan.receipts].map(r => [JSON.stringify(r), r])).values()];
+        return { ...plan, receipts };
+      });
+      validatePlans(mealPlans, preparedBatches);
       // Do not resurrect ingredients removed by an already-applied local meal correction.
       const removed = new Set(this.mealCorrections.filter(item => !item.revertedAt).flatMap(item => item.previous.filter(entry => !item.applied.some(after => after.id === entry.id)).map(entry => entry.id)));
       for (let i = logs.length - 1; i >= 0; i--) if (removed.has(logs[i].id) && !this.logs.some(local => local.id === logs[i].id)) logs.splice(i, 1);
@@ -710,19 +808,20 @@ export class Repository {
       if (new Set(names).size !== names.length) throw new Error("Two shortcuts use the same name. Rename the local shortcut before restoring.");
       if (shortcuts.length > 1000) throw new Error("This restore exceeds 1,000 shortcuts.");
       // Local target history wins for dates already present; restored targets fill missing dates.
-      const localDates = new Set(this.targets.map(change => change.effectiveOn));
+      const localDates = new Set([...this.targets, ...this.goalPrograms].map(change => change.effectiveOn));
       const targets = merge((backup.targets ?? []).filter(change => !localDates.has(change.effectiveOn)), this.targets);
       assertBatchCapacity(preparedBatches, logs);
       const draft = this.draft.lines.length || this.draft.text || this.draft.recipeName || this.draft.splitPlan || this.draft.loggingDate ? this.draft : backup.draft;
       const recipeDrafts = { ...backup.recipeDrafts, ...this.recipeDrafts };
       const matches = { ...backup.quickEntry?.matches };
       for (const [query, match] of Object.entries(this.quickEntry.matches)) if (options.recoverMissing || !matches[query] || matches[query].confirmedAt <= match.confirmedAt) matches[query] = match;
-      const preferences = quickEntrySchema.parse({ portionDrafts: backup.quickEntry?.portionDrafts || this.quickEntry.portionDrafts ? { ...backup.quickEntry?.portionDrafts, ...this.quickEntry.portionDrafts } : undefined, lastMeal: this.quickEntry.lastMeal ?? backup.quickEntry?.lastMeal, voiceDraft: this.quickEntry.voiceDraft !== undefined ? this.quickEntry.voiceDraft : backup.quickEntry?.voiceDraft, voiceLocale: this.quickEntry.voiceLocale ?? backup.quickEntry?.voiceLocale, lastVoiceCommand: this.quickEntry.lastVoiceCommand ?? backup.quickEntry?.lastVoiceCommand, weightDraft: this.quickEntry.weightDraft !== undefined ? this.quickEntry.weightDraft : backup.quickEntry?.weightDraft, weightUnit: this.quickEntry.weightUnit ?? backup.quickEntry?.weightUnit, mealEdit: this.quickEntry.mealEdit ?? backup.quickEntry?.mealEdit, libraryHidden: backup.quickEntry?.libraryHidden || this.quickEntry.libraryHidden ? { ...backup.quickEntry?.libraryHidden, ...this.quickEntry.libraryHidden } : undefined, entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, labelDrafts: backup.quickEntry?.labelDrafts || this.quickEntry.labelDrafts ? { ...backup.quickEntry?.labelDrafts, ...this.quickEntry.labelDrafts } : undefined, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
+      const preferences = quickEntrySchema.parse({ planDraft: this.quickEntry.planDraft ?? backup.quickEntry?.planDraft, portionDrafts: backup.quickEntry?.portionDrafts || this.quickEntry.portionDrafts ? { ...backup.quickEntry?.portionDrafts, ...this.quickEntry.portionDrafts } : undefined, lastMeal: this.quickEntry.lastMeal ?? backup.quickEntry?.lastMeal, voiceDraft: this.quickEntry.voiceDraft !== undefined ? this.quickEntry.voiceDraft : backup.quickEntry?.voiceDraft, voiceLocale: this.quickEntry.voiceLocale ?? backup.quickEntry?.voiceLocale, lastVoiceCommand: this.quickEntry.lastVoiceCommand ?? backup.quickEntry?.lastVoiceCommand, weightDraft: this.quickEntry.weightDraft !== undefined ? this.quickEntry.weightDraft : backup.quickEntry?.weightDraft, weightUnit: this.quickEntry.weightUnit ?? backup.quickEntry?.weightUnit, mealEdit: this.quickEntry.mealEdit ?? backup.quickEntry?.mealEdit, libraryHidden: backup.quickEntry?.libraryHidden || this.quickEntry.libraryHidden ? { ...backup.quickEntry?.libraryHidden, ...this.quickEntry.libraryHidden } : undefined, entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, labelDrafts: backup.quickEntry?.labelDrafts || this.quickEntry.labelDrafts ? { ...backup.quickEntry?.labelDrafts, ...this.quickEntry.labelDrafts } : undefined, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
       validatePortionDrafts(preferences.portionDrafts, preparedBatches);
+      validatePlanDraft(preferences.planDraft, preparedBatches, mealPlans);
       const clearingDeletion = this.isDeletionUndo || this.isCorrectionUndo;
-      await this.commit([...weighIns.map(item => put('weighIn', item.id, item)), ...mealCorrections.map(item => put('mealCorrection', item.id, item)), ...shortcuts.map(item => put('mealShortcut', item.id, item)), ...dayReviews.map(item => put('dayReview', item.id, item)), ...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : []), ...(clearingDeletion ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
+      await this.commit([...goalPrograms.map(p => put('goalProgram', p.id, p)), ...mealPlans.map(p => put('mealPlan', p.id, p)), ...weighIns.map(item => put('weighIn', item.id, item)), ...mealCorrections.map(item => put('mealCorrection', item.id, item)), ...shortcuts.map(item => put('mealShortcut', item.id, item)), ...dayReviews.map(item => put('dayReview', item.id, item)), ...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : []), ...(clearingDeletion ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
       if (clearingDeletion) { this.undo = []; this.deletionUndo = []; }
-      this.weighIns = weighIns; this.mealCorrections = mealCorrections; this.shortcuts = shortcuts; this.dayReviews = dayReviews; this.targets = targets; this.quickEntry = preferences; this.preparedBatches = preparedBatches;
+      this.goalPrograms = goalPrograms; this.mealPlans = mealPlans; this.weighIns = weighIns; this.mealCorrections = mealCorrections; this.shortcuts = shortcuts; this.dayReviews = dayReviews; this.targets = targets; this.quickEntry = preferences; this.preparedBatches = preparedBatches;
       this.foods = foods; this.recipes = recipes; this.logs = logs; this.draft = draft; this.sortAndIndex();
       this.recipeDrafts = recipeDrafts;
     });

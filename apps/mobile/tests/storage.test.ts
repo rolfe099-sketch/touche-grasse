@@ -1,3 +1,5 @@
+import { startingTargets } from '../src/domain/goals';
+import { PlanReview, plannedNutrition } from '../src/domain/mealPlanning';
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -37,6 +39,48 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  const goal = () => ({ effectiveOn: dayKey(new Date()), goal: { kind: 'cut' as const, maintenanceKcal: '2500', adjustmentPercent: '10', targetWeightKg: null, method: 'manual' as const }, rest: startingTargets('2250'), training: startingTargets('2450'), trainingDays: [0, 2, 4] });
+  const planned = (repo: Repository, quantity = '1'): PlanReview => ({ id: randomUUID(), baseId: repo.quickEntry.planDraft?.id, value: { name: 'Pasta lunch', dateText: dayKey(new Date()), meal: 'Lunsj', items: [{ kind: 'recipe', recipe: recipeIdeas[0].recipe, quantity: '1', unit: 'servings' }], amounts: [quantity] } });
+  it('persists goal schedules and partial planner drafts through reopen and backup without logging food', async () => {
+    const storage = await adapter(), repo = await setup(storage), g = goal();
+    await repo.saveTargets(startingTargets('2100'), new Date('2026-01-01T12:00:00Z')); await repo.saveGoalProgram(g);
+    expect(repo.targetFor('2026-01-02')?.values.kcal).toBe('2100'); expect(repo.targetFor(g.effectiveOn)?.goalKind).toBe('cut');
+    const review = planned(repo); review.value!.dateText = '2026-'; review.value!.amounts[0] = '1,'; await repo.savePlanDraft(review);
+    expect(repo.logs).toEqual([]); const json = await repo.exportJSON(); expect(inspectRecoveryJSON(json).drafts.planner).toBe(true);
+    const reopened = await setup(storage); expect(reopened.goalPrograms).toEqual(repo.goalPrograms); expect(reopened.quickEntry.planDraft).toEqual({ id: review.id, value: review.value });
+    const restored = await setup(await adapter()); await restored.restoreJSON(json); expect(restored.goalPrograms).toEqual(repo.goalPrograms); expect(restored.quickEntry.planDraft).toEqual(reopened.quickEntry.planDraft); expect(restored.logs).toEqual([]);
+    await restored.close(); await storage.close();
+  });
+  it('plans immutable snapshots, logs once atomically, reopens on Undo and blocks duplicate logging after old-backup restoration', async () => {
+    const storage = await adapter(), repo = await setup(storage), review = planned(repo);
+    await repo.savePlanDraft(review); const p = await repo.saveMealPlan(review); expect(repo.logs).toEqual([]); expect(repo.quickEntry.planDraft?.value).toBeNull(); expect(await repo.savePlanDraft(review)).toBe(false);
+    const [a, b] = await Promise.all([repo.logMealPlan(p.id), repo.logMealPlan(p.id)]); expect(a.length + b.length).toBe(1); expect(repo.logs).toHaveLength(1); expect(repo.logs[0].nutrition).toEqual(plannedNutrition(p.items));
+    const eaten = await repo.exportJSON(); await repo.undoLast(); expect(repo.logs).toEqual([]); expect(repo.mealPlans[0].loggedAt).toBeNull();
+    await repo.restoreJSON(eaten); expect(repo.logs).toHaveLength(1); expect(await repo.logMealPlan(p.id)).toEqual([]); expect(repo.logs).toHaveLength(1);
+    const reopened = await setup(storage); expect(await reopened.logMealPlan(p.id)).toEqual([]); await storage.close();
+  });
+  it('merges consumed receipts into an older local pending plan without losing the local plan snapshot', async () => {
+    const source = await setup(await adapter()), review = planned(source); await source.savePlanDraft(review); const p = await source.saveMealPlan(review), pending = await source.exportJSON();
+    await source.logMealPlan(p.id); const eaten = await source.exportJSON();
+    const local = await setup(await adapter()); await local.restoreJSON(pending); await local.restoreJSON(eaten); expect(local.logs).toHaveLength(1); expect(local.mealPlans[0].receipts).toHaveLength(1); expect(await local.logMealPlan(p.id)).toEqual([]);
+    await local.restoreJSON(eaten); expect(local.mealPlans[0].receipts).toHaveLength(1); await local.close(); await source.close();
+  });
+  it('checks finite stock at consumption, keeps planning free of stock use and rolls back failed log transactions', async () => {
+    const storage = await adapter(); let fail = false;
+    const repo = await setup({ ...storage, commit: (...args) => { if (fail) { fail = false; throw new Error('plan transaction failed'); } return storage.commit(...args); } });
+    const batch = await repo.createPreparedBatch(recipeIdeas[0].recipe), review = planned(repo, '6'); review.value!.sourceBatchId = batch.id;
+    await repo.savePlanDraft(review); const p = await repo.saveMealPlan(review); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('6');
+    const before = await repo.exportJSON(); fail = true; await expect(repo.logMealPlan(p.id)).rejects.toThrow('plan transaction failed'); expect(await repo.exportJSON()).toBe(before);
+    await repo.logPreparedBatch(batch.id, '1', 'servings'); const partial = await repo.exportJSON(); await expect(repo.logMealPlan(p.id)).rejects.toThrow(); expect(await repo.exportJSON()).toBe(partial);
+    await repo.undoLast(); await repo.logMealPlan(p.id); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('0'); expect(repo.logs[0].nutrition).toEqual(recipeTotal(batch.recipe)); await repo.undoLast(); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('6'); await storage.close();
+  });
+  it('preserves plan edits and cancellation markers over old backups and requires explicit consumption date for future plans', async () => {
+    const repo = await setup(await adapter()), review = planned(repo); review.value!.dateText = '2099-01-01'; await repo.savePlanDraft(review); const p = await repo.saveMealPlan(review);
+    const old = await repo.exportJSON(); await expect(repo.logMealPlan(p.id)).rejects.toThrow('Future meals');
+    await repo.cancelMealPlan(p.id); await repo.restoreJSON(old); expect(repo.mealPlans[0].cancelledAt).not.toBeNull(); expect(repo.logs).toEqual([]); await repo.cancelMealPlan(p.id, false);
+    const edit = planned(repo, '2'); edit.value!.editingId = p.id; await repo.savePlanDraft(edit); await expect(repo.logMealPlan(p.id, dayKey(new Date()))).rejects.toThrow('Finish or cancel');
+    await repo.saveMealPlan(edit); await repo.logMealPlan(p.id, dayKey(new Date())); expect(repo.logs[0].nutrition).toEqual(recipePortion(recipeIdeas[0].recipe, '2')); expect(dayKey(new Date(repo.logs[0].recordedAt))).toBe(dayKey(new Date())); expect(repo.mealPlans[0].date).toBe(dayKey(new Date())); await repo.close();
+  });
   it('saves a Discover copy once, preserves edits and source snapshots, and logs exactly one sixth only after a portion action', async () => {
     const storage = await adapter(), repo = await setup(storage), source = recipeIdeas[0].recipe;
     const [copy, again] = await Promise.all([repo.saveRecipeIdea(source), repo.saveRecipeIdea(source)]);

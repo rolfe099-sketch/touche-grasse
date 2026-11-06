@@ -23,6 +23,6 @@ export default function Layout() {
 function Routes() {
   const reduced = useReducedMotion();
   return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: reduced ? 'none' : 'slide_from_right' }}>
-    <Stack.Screen name="(tabs)" /><Stack.Screen name="entry" options={{ presentation: 'modal', animation: reduced ? 'none' : 'slide_from_bottom' }} /><Stack.Screen name="manual" /><Stack.Screen name="recipe" /><Stack.Screen name="settings" /><Stack.Screen name="scan" /><Stack.Screen name="log" />
+    <Stack.Screen name="(tabs)" /><Stack.Screen name="entry" options={{ presentation: 'modal', animation: reduced ? 'none' : 'slide_from_bottom' }} /><Stack.Screen name="manual" /><Stack.Screen name="recipe" /><Stack.Screen name="settings" /><Stack.Screen name="planner" /><Stack.Screen name="scan" /><Stack.Screen name="log" />
   </Stack>;
 }

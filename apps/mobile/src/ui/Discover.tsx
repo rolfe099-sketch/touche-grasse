@@ -33,8 +33,8 @@ export function DiscoverFood({ food, expanded, onExpand, onAdd, onSave, saved, d
   </View>;
 }
 
-type RecipeProps = { idea: RecipeIdea; featured?: boolean; expanded: boolean; onExpand: () => void; saved: boolean; disabled: boolean; onSave: () => void; onEdit: () => void; onPrepare: () => void };
-export function DiscoverRecipe({ idea, featured = false, expanded, onExpand, saved, disabled, onSave, onEdit, onPrepare }: RecipeProps) {
+type RecipeProps = { idea: RecipeIdea; featured?: boolean; expanded: boolean; onExpand: () => void; saved: boolean; disabled: boolean; onSave: () => void; onEdit: () => void; onPrepare: () => void; onPlan: () => void };
+export function DiscoverRecipe({ idea, featured = false, expanded, onExpand, saved, disabled, onSave, onEdit, onPrepare, onPlan }: RecipeProps) {
   const { width, fontScale } = useWindowDimensions();
   const cover = featured && !expanded && width >= 360 && fontScale < 1.4;
   const compactDetails = expanded && width / fontScale < 360;
@@ -63,7 +63,7 @@ export function DiscoverRecipe({ idea, featured = false, expanded, onExpand, sav
     {expanded && <Reveal trigger={idea.slug} style={{ paddingTop: 14, gap: 12 }}>
       <Text style={{ fontSize: 14, lineHeight: 20, color: colors.secondary }}>{idea.description}</Text>
       <DiscoverNutrition value={nutrition} caption={`Per serving · original recipe makes ${idea.servings}`} />
-      <View style={{ flexDirection: 'row', gap: 9, flexWrap: 'wrap' }}><Button compact primary label="Prepare batch" icon="bowl" onPress={onPrepare} disabled={disabled} /><Button compact label={saved ? 'Open saved copy' : 'Save recipe'} icon={saved ? 'book' : 'bookmark'} onPress={saved ? onEdit : onSave} disabled={disabled} /></View>
+      <View style={{ flexDirection: 'row', gap: 9, flexWrap: 'wrap' }}><Button compact label="Plan meal" icon="calendar" onPress={onPlan} disabled={disabled} /><Button compact primary label="Prepare batch" icon="bowl" onPress={onPrepare} disabled={disabled} /><Button compact label={saved ? 'Open saved copy' : 'Save recipe'} icon={saved ? 'book' : 'bookmark'} onPress={saved ? onEdit : onSave} disabled={disabled} /></View>
       <View style={{ flexDirection: 'row', gap: 18 }}><DiscoverMode label="Recipe ingredients" count={idea.recipe.ingredients.length} selected={detail === 'ingredients'} onPress={() => setDetail('ingredients')} /><DiscoverMode label="Recipe method" count={idea.recipe.steps.length} selected={detail === 'method'} onPress={() => setDetail('method')} /></View>
       {detail === 'ingredients' ? <View><Text style={{ color: colors.secondary, fontSize: 11, marginBottom: 5 }}>Whole recipe · use the stated raw, dry or drained weights</Text>{idea.recipe.ingredients.map(i => <View key={i.id} style={{ flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 11, borderBottomWidth: 1, borderColor: colors.line }}><Text style={{ flex: 1, fontSize: 14, lineHeight: 20 }}>{foodLabel(i.food)}</Text><Text style={{ fontSize: 14, fontWeight: '500' }}>{display(i.quantity, 0)} {i.unit}</Text></View>)}</View> : <View style={{ gap: 18 }}>{idea.recipe.steps.map((step, i) => <View key={i} style={{ flexDirection: 'row', gap: 12 }}><Text style={{ width: 23, color: colors.citrus, fontSize: 22, fontFamily: serif }}>{i + 1}</Text><Text style={{ flex: 1, fontSize: 14, lineHeight: 22 }}>{step}</Text></View>)}</View>}
       <TextButton label={showNotes ? 'Hide storage & sources' : 'Storage & nutrition sources'} onPress={() => setShowNotes(!showNotes)} />

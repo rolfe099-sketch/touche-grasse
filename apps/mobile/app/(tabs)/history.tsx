@@ -29,7 +29,7 @@ import { WeightPanel, WeeklySummary } from '../../src/ui/WeightPanel';
 import { MealCorrectionHistory } from '../../src/ui/MealEditor';
 import { DayCompletion } from '../../src/ui/DayCompletion';
 import { TargetSummary } from '../../src/ui/Targets';
-import { targetOn } from '../../src/domain/targets';
+
 
 
 
@@ -112,7 +112,7 @@ export default function History() {
         <TextButton label="Log food for this day" disabled={dayKey(date) > dayKey(new Date()) || app.busy} onPress={() => router.push({ pathname: '/entry', params: { date: dayKey(date) } })} />
         <DayCompletion date={dayKey(date)} />
         <MealCorrectionHistory date={dayKey(date)} />
-        <TargetSummary change={targetOn(app.repo.targets, dayKey(date))} />
+        <TargetSummary change={app.repo.targetFor(dayKey(date))} />
 
         {day ? <Diary entries={day.entries} /> : <View style={{ paddingVertical: 20, borderTopWidth: 1, borderColor: colors.line, gap: 10 }}><Text style={{ fontSize: 19, fontWeight: '600' }}>{dayKey(date) < dayKey(new Date(app.repo.profile.firstUsedAt)) ? 'Before your tracking began' : 'No food recorded on this day'}</Text><Text style={styles.subtitle}>An empty diary tells us nothing about what you ate. It is excluded from intake averages.</Text></View>}
 

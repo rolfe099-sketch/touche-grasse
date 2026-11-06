@@ -1,4 +1,4 @@
-export const recordKinds = ['food', 'log', 'recipe', 'draft', 'undo', 'deletionUndo', 'profile', 'recipeDraft', 'quickEntry', 'preparedBatch', 'targetChange', 'mealShortcut', 'dayReview', 'mealCorrection', 'correctionUndo', 'weighIn'] as const;
+export const recordKinds = ['food', 'log', 'recipe', 'draft', 'undo', 'deletionUndo', 'profile', 'recipeDraft', 'quickEntry', 'preparedBatch', 'targetChange', 'goalProgram', 'mealPlan', 'mealShortcut', 'dayReview', 'mealCorrection', 'correctionUndo', 'weighIn'] as const;
 export type Kind = typeof recordKinds[number];
 export type Stored = { key: string; kind: Kind; id: string; value: unknown };
 export type Change = { type: 'put'; record: Stored } | { type: 'delete'; key: string };
@@ -15,5 +15,5 @@ export function validateStoredIdentity(record: Stored) {
   if (typeof record.id !== 'string' || !record.id || record.key !== `${record.kind}:${record.id}`) throw new Error('Saved data has an invalid record identity. No records were changed.');
   const singleton: Partial<Record<Kind, string>> = { draft: 'active', undo: 'latest', deletionUndo: 'latest', profile: 'identity', quickEntry: 'preferences', correctionUndo: 'latest' };
   if (singleton[record.kind] && record.id !== singleton[record.kind]) throw new Error('Saved data has an invalid record identity. No records were changed.');
-  if (['food', 'log', 'recipe', 'preparedBatch', 'targetChange', 'mealShortcut', 'dayReview', 'mealCorrection', 'weighIn'].includes(record.kind) && (!record.value || typeof record.value !== 'object' || !('id' in record.value) || record.value.id !== record.id)) throw new Error('Saved data has an invalid record identity. No records were changed.');
+  if (['food', 'log', 'recipe', 'preparedBatch', 'targetChange', 'goalProgram', 'mealPlan', 'mealShortcut', 'dayReview', 'mealCorrection', 'weighIn'].includes(record.kind) && (!record.value || typeof record.value !== 'object' || !('id' in record.value) || record.value.id !== record.id)) throw new Error('Saved data has an invalid record identity. No records were changed.');
 }

@@ -8,7 +8,7 @@ import { colors, numeric } from './theme';
 import { Icon } from './Icon';
 
 // Compare recorded intake only with explicitly entered targets, never inferred goals.
-export function DailyNutrition({ value, entries, meals, onTrend, targets, onTargets, complete = false }: { complete?: boolean; value: Nutrition; entries: number; meals: number; onTrend: () => void; targets?: TargetValues; onTargets?: () => void }) {
+export function DailyNutrition({ value, entries, meals, onTrend, targets, onTargets, targetLabel, complete = false }: { targetLabel?: string; complete?: boolean; value: Nutrition; entries: number; meals: number; onTrend: () => void; targets?: TargetValues; onTargets?: () => void }) {
   const { width, fontScale } = useWindowDimensions(), layout = readableLayout(width, fontScale);
   const knownIntake = entries > 0 || complete;
   const keys = ['protein', 'carbohydrate', 'fat', 'fiber'] as const;
@@ -16,7 +16,7 @@ export function DailyNutrition({ value, entries, meals, onTrend, targets, onTarg
   const remaining = (value: string | null, digits = 1) => value === null ? '– left' : new D(value).isNegative() ? `${display(new D(value).abs().toFixed(), digits)} over` : `${display(value, digits)} left`;
   return <View testID="today-overview" style={{ backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 16, paddingTop: 5, paddingBottom: 15 }}>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-      {onTargets ? <Pressable accessibilityRole="button" accessibilityLabel={active ? 'Edit daily targets' : 'Set daily targets'} onPress={onTargets} style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: pressed ? .6 : 1 })}><Text style={{ color: colors.action, fontSize: 12 }}>{active ? 'Daily targets' : 'Set targets'} <Text style={{ fontSize: 12 }}>›</Text></Text></Pressable> : <Text style={{ color: colors.secondary, fontSize: 12, letterSpacing: .7 }}>DAILY INTAKE</Text>}
+      {onTargets ? <Pressable accessibilityRole="button" accessibilityLabel={active ? 'Edit daily targets' : 'Set daily targets'} onPress={onTargets} style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: pressed ? .6 : 1 })}><Text style={{ color: colors.action, fontSize: 12 }}>{active ? targetLabel ?? 'Daily targets' : 'Set targets'} <Text style={{ fontSize: 12 }}>›</Text></Text></Pressable> : <Text style={{ color: colors.secondary, fontSize: 12, letterSpacing: .7 }}>DAILY INTAKE</Text>}
       <Pressable accessibilityRole="button" accessibilityLabel="Explore intake history" onPress={onTrend} style={({ pressed }) => ({ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5, opacity: pressed ? .6 : 1 })}>
         <Text style={{ fontSize: 13, color: colors.secondary }}>This week</Text><Icon name="next" size={13} color={colors.secondary} />
       </Pressable>
