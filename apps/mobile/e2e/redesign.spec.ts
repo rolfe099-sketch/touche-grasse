@@ -41,8 +41,8 @@ test('redesigned navigation, Today one-tap saved portion, Library search and fou
   await log.click(); await expect(page.getByTestId('today-portions')).toContainText('4 servings left');
   await page.getByRole('button', { name: 'Undo last log', exact: true }).click(); await expect(page.getByTestId('today-portions')).toContainText('5 servings left');
   await page.getByRole('tab', { name: 'Library', exact: true }).click(); await expect(page.getByRole('textbox', { name: 'Search your library' })).toBeVisible();
-  await page.getByRole('button', { name: 'Increase portion amount', exact: true }).click(); await expect(page.getByTestId('portion-amount')).toHaveValue('2');
-  await expect(page.getByTestId('remaining-portions')).toContainText('5 servings left'); await page.getByRole('button', { name: 'Decrease portion amount', exact: true }).click(); await expect(page.getByTestId('portion-amount')).toHaveValue('1');
+  await page.getByRole('button', { name: 'Increase servings to log', exact: true }).click(); await expect(page.getByTestId('portion-amount')).toHaveValue('2');
+  await expect(page.getByTestId('remaining-portions')).toContainText('5 servings left'); await page.getByRole('button', { name: 'Decrease servings to log', exact: true }).click(); await expect(page.getByTestId('portion-amount')).toHaveValue('1');
   await page.getByRole('button', { name: 'Library recipes', exact: true }).click(); await page.screenshot({ path: path.join(output, 'library-390.png') });
   await page.getByRole('button', { name: 'Library foods', exact: true }).click(); await page.getByRole('textbox', { name: 'Search your library' }).fill('olive'); await expect(page.getByTestId('food-mvt:08.019')).toBeVisible();
   await page.getByRole('tab', { name: 'Discover', exact: true }).click(); await expect(page.getByRole('button', { name: 'Explore Ingredients', exact: true })).toBeVisible(); await page.screenshot({ path: path.join(output, 'discover-390.png') });
