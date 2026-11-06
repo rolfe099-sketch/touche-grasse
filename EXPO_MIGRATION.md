@@ -1,3 +1,5 @@
+> Historical implementation notes. For the active Expo application, start with the [project README](README.md) and [development guide](docs/DEVELOPMENT.md).
+
 # Touche Grasse: primary Expo implementation
 
 The primary application is now [apps/mobile](apps/mobile/README.md): Expo SDK 54, React Native, strict TypeScript and Expo Router, targeting iPhone with a working browser development path.

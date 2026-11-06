@@ -34,7 +34,7 @@ The focus is fast, trustworthy logging. This list reflects implemented work and 
 2. **Physical restoration acceptance:** complete a controlled native restore with an exported recovery copy. Creation, Files export and review counts are owner-confirmed; desktop upgrade and rollback tests do not establish iOS Files restoration.
 3. **Physical interruption acceptance:** verify incoming calls, camera release, permission denial/recovery and airplane-mode reconnect on the owner's iPhone. Browser/native-port contracts and observed software failures are covered; actual OS transitions remain pending.
 4. **Physical accessibility acceptance:** check actual iPhone VoiceOver reading/focus order, Dynamic Type, numeric Done and keyboard avoidance against the browser-verified layouts. Do not infer these results from automation.
-5. **Release preparation when requested:** standalone signing, installation/update instructions and store preparation follow a nearly finished app and completed device validation. Standalone builds are currently postponed.
+5. **Release preparation when requested:** standalone signing, installation/update instructions and store preparation follow a nearly finished app and completed device validation. The first production iOS build was uploaded for TestFlight processing; App Review submission and public availability must be verified separately. See [release checkpoints](docs/TESTFLIGHT_RELEASE.md).
 
 The [iPhone checklist](docs/IPHONE_TESTING.md) distinguishes owner-confirmed behavior, browser checks and tests using fake native ports. Do not equate those forms of evidence.
 

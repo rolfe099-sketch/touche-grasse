@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: App support
+    url: https://rolfe099-sketch.github.io/touche-grasse/support/
+    about: Get help without posting private diary information publicly.
+  - name: Report a security vulnerability privately
+    url: mailto:support@eriksenlabs.com
+    about: Do not disclose vulnerabilities, signing keys or personal backups in public issues.

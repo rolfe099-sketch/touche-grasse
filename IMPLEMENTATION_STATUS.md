@@ -1,3 +1,5 @@
+> Historical implementation notes. For the active Expo application, start with the [project README](README.md) and [development guide](docs/DEVELOPMENT.md).
+
 # Implementation status — 22 October 2026
 
 **Milestone 0 and Milestone 1 are not marked complete.** Native sources and the first workflow are prepared, but Xcode build, native tests, simulator interaction and physical-iPhone validation remain outstanding.

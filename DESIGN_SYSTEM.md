@@ -1,3 +1,5 @@
+> Historical design/decision record. The active app uses the [Expo design language](docs/DESIGN.md); see the [documentation index](docs/README.md) for current guides.
+
 # Design system — light appearance, revision 1
 
 Touche Grasse should feel like familiar, carefully maintained software. Editorial hierarchy, compact native lists, meaningful quantities and direct actions take precedence over decorative dashboards. The temporary wordmark is the literal name set in the system serif, semibold/bold. It is not a finished trademark or logo.

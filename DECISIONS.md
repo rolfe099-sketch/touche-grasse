@@ -1,3 +1,5 @@
+> Historical design/decision record. The active app uses the [Expo design language](docs/DESIGN.md); see the [documentation index](docs/README.md) for current guides.
+
 # Product and engineering decisions
 
 ## 2026-10-22 — initial source milestone

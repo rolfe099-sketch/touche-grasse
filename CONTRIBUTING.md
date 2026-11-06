@@ -2,7 +2,9 @@
 
 Thank you for helping keep Touche Grasse useful and free.
 
-Use Node 24 LTS. From `apps/mobile`, run `npm ci` and `npm run web`. The Expo app is the active implementation. Keep changes focused and discuss large features in an issue first.
+Please follow our [Code of Conduct](CODE_OF_CONDUCT.md). For a source map and detailed validation instructions, see the [development guide](docs/DEVELOPMENT.md).
+
+Use Node 24 LTS. From `apps/mobile`, run `npm ci` and `npm run web`. The Expo app is the active implementation. Keep changes focused and discuss large features in an issue first. Check existing issues and PRs before starting. A maintainer-approved issue is the best starting point for a larger contribution.
 
 Before opening a pull request:
 
@@ -32,3 +34,7 @@ For food issues, include the public source URL/ID, query and expected match. Do 
 Describe the problem, resulting behavior, validation performed and remaining limits. New features should use the existing component language and be accessible to keyboard and screen-reader users.
 
 By contributing, you agree that your original contributions are provided under this project's AGPL-3.0-only license. Preserve attribution and only contribute material you have the right to share. Be respectful and specific in discussions.
+
+## Scope and review
+
+Open PRs against `main`. Explain the user-visible problem, why the change solves it, which checks ran and any compatibility risks. Include actual screenshots for interface changes. Do not label fixture/browser evidence as physical-device validation. Add user-facing changes to [CHANGELOG.md](CHANGELOG.md) under Unreleased. There is no contributor agreement beyond the existing project license and no guaranteed review deadline.

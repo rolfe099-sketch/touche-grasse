@@ -15,7 +15,7 @@ npx expo start --web --port 8082
 
 No API keys or backend are required for the offline catalog and food diary. The app uses Expo SDK 54. For phone development, use `npm start` and the address/QR printed by Metro on your own network. Do not reuse another developer's LAN address. Check current Expo runtime compatibility before installing or upgrading a phone client.
 
-Direct native speech requires a development build containing `expo-speech-recognition`. Browser speech depends on browser support and permissions. Barcodes check saved products first, then Open Food Facts with inline package review before saving. Camera and recovery file sharing still need physical-device validation. See [barcode and recovery behavior](../../docs/BARCODES_AND_RECOVERY.md).
+Direct native speech requires a development build containing `expo-speech-recognition`. Browser speech depends on browser support and permissions. Barcodes check saved products first, then Open Food Facts with inline package review before saving. Some native flows have owner-confirmed checks; further release-build, interruption and accessibility acceptance remains pending. See [barcode and recovery behavior](../../docs/BARCODES_AND_RECOVERY.md).
 
 ## Checks
 
