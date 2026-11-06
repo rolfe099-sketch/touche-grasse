@@ -32,3 +32,65 @@ it('supports explicitly printed full unit names in English and Norwegian without
   const liquid = parseNutritionLabel({ engine: 'platform', blocks: [], text: 'Per 100 millilitres\nEnergi 200 kilojoules\nFett 0 gram\nProtein 5,6 Dr' }).columns[0];
   expect(liquid.unit).toBe('ml'); expect(liquid.nutrition.fat).toBe('0'); expect(liquid.nutrition.protein).toBeNull(); expect(liquid.suggestions?.protein).toBe('5.6');
 });
+
+it.each([
+  ['ground beef', /^Beef, minced meat, .*raw$/],
+  ['minced beef', /^Beef, minced meat, .*raw$/],
+  ['kyllingbryst', /^Chicken, fillet, without skin, raw$/],
+  ['kyllingfileter', /^Chicken, fillet, without skin, raw$/],
+  ['bell pepper', /^Sweet pepper, .*raw$/],
+  ['red bell pepper', /^Sweet pepper, red, raw$/],
+  ['kokt ris', /^Rice, .*cooked$/],
+])('ranks the actual ingredient for the observed missed query %s', (query, description) => {
+  expect(index.search(query)[0]?.aliases[0]).toMatch(description);
+  expect(matchIngredient(query, index, emptyPreferences()).food).toBeNull();
+});
+it('keeps rice grain above noodles, prefix collisions and uncooked pre-boiled records', () => {
+  const results = index.search('kokt ris');
+  expect(results.slice(0, 3).every(food => /^Rice,/.test(food.aliases[0]))).toBe(true);
+  expect(results.some(food => /Chestnut|uncooked/i.test(food.aliases[0]))).toBe(false);
+  expect(index.search('ris tørr').slice(0, 3).every(food => /uncooked/.test(food.aliases[0]))).toBe(true);
+  // Prefix search still works while typing and one-letter typos remain suggestions.
+  expect(index.search('kylli').some(food => /^Kylling,/.test(food.name))).toBe(true);
+  expect(index.search('chiken').some(food => /^Kylling,/.test(food.name))).toBe(true);
+  expect(matchIngredient('chiken', index, emptyPreferences()).food).toBeNull();
+});
+it('search phrases remain suggestions and preserve source names, aliases and nutrition', () => {
+  const mince = index.search('ground beef').map(food => food.id);
+  expect(mince.indexOf('mvt:03.397')).toBeLessThan(mince.indexOf('mvt:03.127'));
+  const original = JSON.stringify(catalog);
+  const isolated = new FoodIndex(), chicken = (catalog as Food[]).find(food => food.id === 'mvt:03.205')!;
+  isolated.add({ ...chicken, aliases: [] });
+  expect(isolated.search('kyllingbryst')[0].id).toBe(chicken.id);
+  expect(isolated.exact('kyllingbryst')).toEqual([]);
+  expect(matchIngredient('kyllingbryst', isolated, emptyPreferences()).food).toBeNull();
+  for (const query of ['ground beef', 'bell pepper', 'kyllingbryst']) {
+    index.search(query); expect(index.exact(query)).toEqual([]);
+  }
+  expect(index.search('ground pepper').some(food => /Beef|Chicken/.test(food.aliases[0]))).toBe(false);
+  expect(JSON.stringify(catalog)).toBe(original);
+});
+it('keeps explicit preparation safe for remembered choices and preserves confirmed product priority', () => {
+  const chicken = index.get('mvt:03.205')!, cooked = index.get('mvt:03.418')!, personal = new FoodIndex();
+  (catalog as Food[]).forEach(food => personal.add(food));
+  const matches = { 'ground beef': { foodId: 'mvt:03.397', confirmedAt: '2026-11-06T12:00:00Z' }, 'chicken cooked': { foodId: chicken.id, confirmedAt: '2026-11-06T12:00:00Z' }, 'chicken raw': { foodId: cooked.id, confirmedAt: '2026-11-06T12:00:00Z' } };
+  personal.setPersonal([], [], [], matches);
+  expect(personal.search('ground beef')[0].id).toBe('mvt:03.397');
+  expect(matchIngredient('ground beef', personal, { matches, favorites: [] }).reason).toBe('remembered');
+  for (const query of ['chicken cooked', 'chicken raw']) expect(matchIngredient(query, personal, { matches, favorites: [] }).food).toBeNull();
+  expect(personal.search('chicken cooked').some(food => food.id === chicken.id)).toBe(false);
+  expect(personal.search('chicken raw').some(food => food.id === cooked.id)).toBe(false);
+});
+
+it('keeps whole plural ingredients and saved-only prefix search reachable', () => {
+  expect(index.search('peanut')[0].aliases[0]).toBe('Peanuts, raw');
+  expect(index.search('peanut').some(food => food.aliases[0] === 'Peanuts, roasted, salted')).toBe(true);
+  const personal = new FoodIndex(), rice = (catalog as Food[]).find(food => food.id === 'mvt:05.338')!;
+  const saved = { ...rice, id: 'saved-ricecakes', name: 'Ricecakes', aliases: [] };
+  personal.add(rice); personal.setPersonal([saved], []);
+  expect(personal.search('rice')[0].id).toBe(rice.id);
+  expect(personal.search('rice', true)[0].id).toBe(saved.id);
+  personal.add({ ...saved, name: 'Quinoa cakes' });
+  expect(personal.search('rice', true)).toEqual([]);
+  expect(personal.search('quinoa', true)[0].id).toBe(saved.id);
+});

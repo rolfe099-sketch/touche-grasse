@@ -18,6 +18,8 @@ The focus is fast, trustworthy logging. This list reflects implemented work and 
 
 - Complete restore validation before confirmation, rejection of unsupported fields/record types, failed-startup handle cleanup and legacy correction/snapshot compatibility. See [backup and upgrade safety](docs/BACKUP_AND_UPGRADE_SAFETY.md); full physical iPhone restoration remains pending.
 
+- Observed ingredient-search failures now have explicit English/Norwegian phrase coverage, complete-word relevance and raw/cooked mismatch guards. See [everyday matching coverage](docs/FOOD_MATCHING_COVERAGE.md).
+
 ## Next priorities
 
 1. **Coverage from real failures:** improve Norwegian product/alias coverage using observed missed queries and readable package evidence. Preserve sources, missing-nutrient states and raw/cooked distinctions.
