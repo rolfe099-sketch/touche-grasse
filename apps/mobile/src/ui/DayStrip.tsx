@@ -14,7 +14,7 @@ export function DayStrip({ date, loggedDays, onSelect }: { date: Date; loggedDay
     const position = positions.current.get(selectedKey);
     if (position && viewport.current) strip.current?.scrollTo({ x: Math.max(0, position.x + position.width - viewport.current), animated: false });
   }
-  useEffect(revealSelected, [selectedKey, fontScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(revealSelected, [selectedKey, fontScale]);
   const monday = addDays(date, -((date.getDay() + 6) % 7)), today = dayKey(new Date());
   return <ScrollView ref={strip} horizontal showsHorizontalScrollIndicator={false} onLayout={event => { viewport.current = event.nativeEvent.layout.width; revealSelected(); }} onContentSizeChange={revealSelected} testID="today-day-strip" contentContainerStyle={{ minWidth: '100%', flexDirection: 'row', marginBottom: 8, borderTopWidth: 0, borderBottomWidth: 0, borderColor: colors.line, paddingVertical: 3 }}>
     {Array.from({ length: 7 }, (_, i) => {

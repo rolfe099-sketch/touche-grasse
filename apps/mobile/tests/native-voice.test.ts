@@ -19,6 +19,13 @@ const callbacks = () => ({ onState: vi.fn(), onText: vi.fn(), onError: vi.fn() }
 const result = (text: string, isFinal = true) => ({ isFinal, results: [{ transcript: text }] });
 
 describe('native speech lifecycle with a fake native port (no microphone execution)', () => {
+  it('reports an interruption after a final transcript so a pending UI submission can be invalidated', async () => {
+    const h = harness(), cb = callbacks(); await h.voice.start('en-US', cb);
+    h.emit('result', result('log this meal')); h.emit('error', { error: 'interrupted', message: 'Audio session interrupted' });
+    expect(cb.onText).toHaveBeenCalledWith('log this meal', true); expect(cb.onError).toHaveBeenCalledWith('Audio session interrupted');
+    expect(cb.onState).toHaveBeenLastCalledWith(false); expect([...h.handlers.values()].every(set => set.size === 0)).toBe(true);
+    h.emit('result', result('late log this meal')); expect(cb.onText).toHaveBeenCalledOnce();
+  });
   it('does not start when a permission request resolves after cancellation', async () => {
     const h = harness(), pending = deferred<{ granted: boolean }>(); h.permission.mockReturnValueOnce(pending.promise);
     const cb = callbacks(), start = h.voice.start('en-US', cb); h.voice.cancel(); pending.resolve({ granted: true }); await start;

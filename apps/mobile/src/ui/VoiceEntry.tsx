@@ -37,16 +37,19 @@ export function VoiceEntry({ onCommand, disabled, mode, onMode, onReview, onType
   useFocusEffect(useCallback(() => () => cancelRef.current(), []));
   useEffect(() => {
     // Permission prompts may make iOS inactive; established capture is interrupted.
-    const subscription = AppState.addEventListener('change', state => { if (state === 'background' || (state === 'inactive' && listening)) cancelRef.current(); });
+    const subscription = AppState.addEventListener('change', state => { if (state === 'background' || (state === 'inactive' && (listening || applying.current))) cancelRef.current(); });
     return () => subscription.remove();
   }, [listening]);
   function review() { cancel(); onCommands(false); onReview(); }
-  async function apply(value: string, draft = retained.current) {
+  async function apply(value: string, draft = retained.current, capture?: number) {
     if (!value.trim() || applying.current || disabled) return;
     applying.current = true; setSubmitting(true); setError('');
     try {
       const pending = draft?.text === value ? draft : retain(value);
       await persist(pending);
+      // Automatic speech must still belong to the foreground capture after the
+      // async draft save. Keep interrupted text for an explicit resume instead.
+      if (capture !== undefined && (capture !== generation.current || AppState.currentState !== 'active')) return;
       if (!await command.current(value, pending.id)) return;
       // The repository acknowledges this exact transcript in the food transaction.
       if (retained.current?.id === pending.id) { retained.current = null; setText(''); }
@@ -61,14 +64,14 @@ export function VoiceEntry({ onCommand, disabled, mode, onMode, onReview, onType
     const capture = ++generation.current, captureId = app.repo.id(); setStarting(true);
     try { await voice.start(locale, {
       onState(value) { if (capture === generation.current) setListening(value); },
-      onError(value) { if (capture === generation.current) setError(value); },
+      onError(value) { if (capture === generation.current) { cancelRef.current(); setError(value); } },
       onText(value, final) {
         if (capture !== generation.current) return;
         if (value.length > 12000) { cancel(); setError('Command too long. Use a shorter command.'); return; }
-        const draft = retain(value, locale, captureId); if (final) void apply(value, draft);
+        const draft = retain(value, locale, captureId); if (final) void apply(value, draft, capture);
       },
     }); }
-    catch (reason) { if (capture === generation.current) setError(reason instanceof Error ? reason.message : 'Voice could not start.'); }
+    catch (reason) { if (capture === generation.current) { cancelRef.current(); setError(reason instanceof Error ? reason.message : 'Voice could not start.'); } }
     finally { if (capture === generation.current) setStarting(false); }
   }
   const startRef = useRef(start); startRef.current = start;

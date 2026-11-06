@@ -5,6 +5,30 @@ import { foodNutrition } from '../src/domain/model';
 import { milkCode, milkProduct } from './barcode-fixture';
 
 const review = (): BarcodeReviewValues => ({ name: 'TINE Lettmelk', referenceUnit: 'ml', amount: '250', nutrition: { kcal: '37', protein: '3.6', carbohydrate: '4.7', fat: '0.5', fiber: '' } });
+it('does not spend request quota while explicitly offline and permits an immediate reconnect', async () => {
+  let online = false;
+  const fetcher = vi.fn<BarcodeFetch>(async () => new Response(JSON.stringify(milkProduct()))), lookup = createBarcodeLookup({ fetch: fetcher, isOnline: () => online });
+  for (let attempt = 0; attempt < 13; attempt++) await expect(lookup(milkCode)).rejects.toThrow('Saved products work offline');
+  expect(fetcher).not.toHaveBeenCalled(); online = true;
+  const result = await lookup(milkCode); expect(result.kind).toBe('found'); expect(fetcher).toHaveBeenCalledOnce();
+  online = false; expect(await lookup(milkCode)).toEqual(result); expect(fetcher).toHaveBeenCalledOnce();
+});
+it('does not lock out native or browser retries after failed connections', async () => {
+  const fetcher = vi.fn<BarcodeFetch>().mockRejectedValue(new TypeError('Network request failed'));
+  const lookup = createBarcodeLookup({ fetch: fetcher, native: true });
+  for (let attempt = 0; attempt < 13; attempt++) await expect(lookup(milkCode)).rejects.toThrow('Saved products work offline');
+  fetcher.mockResolvedValueOnce(new Response(JSON.stringify(milkProduct())));
+  expect((await lookup(milkCode)).kind).toBe('found'); expect(fetcher).toHaveBeenCalledTimes(14);
+});
+it('retains provider protection when HTTP failures or incomplete response bodies were actually received', async () => {
+  const fetcher = vi.fn<BarcodeFetch>(async () => new Response('{}', { status: 503 })), lookup = createBarcodeLookup({ fetch: fetcher });
+  for (let attempt = 0; attempt < 12; attempt++) await expect(lookup(milkCode)).rejects.toThrow('unavailable');
+  await expect(lookup(milkCode)).rejects.toThrow('Wait a minute'); expect(fetcher).toHaveBeenCalledTimes(12);
+  const bodyFailure = vi.fn<BarcodeFetch>(async () => { const response = new Response('{}'); response.text = async () => { throw new TypeError('Connection lost during body'); }; return response; });
+  const bodyLookup = createBarcodeLookup({ fetch: bodyFailure });
+  for (let attempt = 0; attempt < 12; attempt++) await expect(bodyLookup(milkCode)).rejects.toThrow('Could not connect');
+  await expect(bodyLookup(milkCode)).rejects.toThrow('Wait a minute'); expect(bodyFailure).toHaveBeenCalledTimes(12);
+});
 it('validates GTIN check digits and preserves equivalent leading-zero barcodes without changing legacy foods', () => {
   for (const code of [milkCode, '07038010001918', '3017620422003', '96385074', '034000470693']) expect(validRemoteBarcode(code)).toBe(true);
   for (const code of ['123', '1234567890123', '00000000', '7038010001919', '7038010001918x', '123456789']) expect(validRemoteBarcode(code)).toBe(false);

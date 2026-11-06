@@ -14,11 +14,13 @@ The focus is fast, trustworthy logging. This list reflects implemented work and 
 
 - Adaptive macro grids and form rows, larger search/day targets, one-tap search clearing, descriptive nutrient groups and selected-tab semantics. See [accessibility and keyboard finish](docs/ACCESSIBILITY_AND_KEYBOARD.md); physical VoiceOver and Dynamic Type remain pending.
 
+- Interrupted automatic speech remains an explicit-resume draft when leaving or backgrounding before submission. Offline barcode attempts no longer impose a reconnection lockout; provider HTTP limits remain enforced. See [offline and interruption recovery](docs/OFFLINE_AND_INTERRUPTION_RECOVERY.md).
+
 ## Next priorities
 
-1. **Offline and interruption finish:** validate permission denial/recovery, camera release, interrupted speech, offline confirmed-barcode reuse and interrupted editing. Browser and native-port contracts are covered; record the remaining physical results accurately.
-2. **Data portability and upgrades:** keep legacy snapshots and unfinished drafts intact through schema upgrades, rejected imports and recovery. Creating/exporting recovery copies and Files review work on the owner's iPhone; full native restoration remains a separate pending check.
-3. **Coverage from real failures:** improve Norwegian product/alias coverage using observed missed queries and readable package evidence. Preserve sources, missing-nutrient states and raw/cooked distinctions.
+1. **Data portability and upgrades:** keep legacy snapshots and unfinished drafts intact through schema upgrades, rejected imports and recovery. Creating/exporting recovery copies and Files review work on the owner's iPhone; full native restoration remains a separate pending check.
+2. **Coverage from real failures:** improve Norwegian product/alias coverage using observed missed queries and readable package evidence. Preserve sources, missing-nutrient states and raw/cooked distinctions.
+3. **Physical interruption acceptance:** verify incoming calls, camera release, permission denial/recovery and airplane-mode reconnect on the owner's iPhone. Browser/native-port contracts and observed software failures are covered; actual OS transitions remain pending.
 4. **Physical accessibility acceptance:** check actual iPhone VoiceOver reading/focus order, Dynamic Type, numeric Done and keyboard avoidance against the browser-verified layouts. Do not infer these results from automation.
 5. **Release preparation when requested:** standalone signing, installation/update instructions and store preparation follow a nearly finished app and completed device validation. Standalone builds are currently postponed.
 
