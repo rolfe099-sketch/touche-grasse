@@ -1,4 +1,5 @@
-import { Text, TextInput } from '../../src/ui/Text';
+import { SearchField } from '../../src/ui/SearchField';
+import { Text } from '../../src/ui/Text';
 
 import { useMemo, useState } from 'react';
 
@@ -30,7 +31,7 @@ export default function Search() {
 
     <View style={{ paddingHorizontal: 22, gap: 12, paddingBottom: 12 }}>
 
-      <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', gap: 10 }]}><Icon name="search" /><TextInput accessibilityLabel="Search foods" testID="search-input" placeholder="Norwegian or English food name" placeholderTextColor={colors.secondary} value={query} onChangeText={setQuery} style={{ flex: 1, fontSize: 15, color: colors.ink, minHeight: 28 }} autoCorrect={false} /></View>
+      <SearchField label="Search foods" testID="search-input" placeholder="Norwegian or English food name" value={query} onChangeText={setQuery} clearLabel="Clear food search" hint="Search verified foods in English or Norwegian." />
 
       {!query && <><Text style={{ color: colors.secondary, fontSize: 13 }}>Explore 2,121 Norwegian food records</Text><View style={{ flexDirection: 'row', gap: 7 }}>{[{ name: 'Ingredients', query: 'raw', color: colors.blueWash }, { name: 'Protein', query: 'chicken', color: colors.orangeWash }, { name: 'Pasta & grains', query: 'pasta', color: colors.selection }].map(item => <Pressable key={item.name} accessibilityRole="button" accessibilityLabel={`Explore ${item.name}`} onPress={() => setQuery(item.query)} style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? colors.pressed : item.color, borderRadius: 10, padding: 12, minHeight: 78, justifyContent: 'space-between', opacity: pressed ? 0.6 : 1 })}><Icon name={item.name === 'Protein' ? 'bowl' : item.name === 'Ingredients' ? 'leaf' : 'discover'} size={21} color={colors.ink} /><Text style={{ fontSize: 11, fontWeight: '600', marginTop: 6 }}>{item.name}</Text></Pressable>)}</View><Text style={{ fontSize: 12, color: colors.secondary, fontWeight: '600' }}>Kitchen essentials</Text></>}
 

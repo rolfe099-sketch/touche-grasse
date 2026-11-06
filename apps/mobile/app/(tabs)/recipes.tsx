@@ -1,6 +1,8 @@
+import { readableLayout } from '../../src/domain/accessibility';
+import { SearchField } from '../../src/ui/SearchField';
 import { useEffect, useState } from 'react';
 
-import { Image, Pressable, View } from 'react-native';
+import { Image, Pressable, useWindowDimensions, View } from 'react-native';
 
 import { router, useLocalSearchParams } from 'expo-router';
 
@@ -10,9 +12,8 @@ import { useApp } from '../../src/state/AppContext';
 
 import { Button, SegmentButton, FoodRow, IconButton, Screen, styles, TextButton } from '../../src/ui/components';
 
-import { Text, TextInput } from '../../src/ui/Text';
+import { Text } from '../../src/ui/Text';
 
-import { Icon } from '../../src/ui/Icon';
 
 import { colors } from '../../src/ui/theme';
 
@@ -24,6 +25,7 @@ import { MealShortcuts } from '../../src/ui/MealShortcuts';
 import { foodLabel } from '../../src/domain/foodLanguage';
 
 export default function Recipes() {
+  const { width, fontScale } = useWindowDimensions(), layout = readableLayout(width, fontScale);
 
   const app = useApp(), params = useLocalSearchParams<{ view?: string }>();
 
@@ -38,9 +40,9 @@ export default function Recipes() {
 
   return <Screen support title="Library" trailing={<IconButton name="plus" label="New recipe" onPress={() => router.push('/recipe')} />}>
 
-    <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }]}><Icon name="search" size={20} /><TextInput accessibilityLabel="Search your library" placeholder="Recipes, foods, portions" value={query} onChangeText={setQuery} style={{ flex: 1, minHeight: 28 }} /></View>
+    <View style={{ marginBottom: 12 }}><SearchField label="Search your library" placeholder="Recipes, foods, portions" value={query} onChangeText={setQuery} clearLabel="Clear library search" hint="Filter your recipes, saved foods and portions." /></View>
 
-    <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 12, padding: 4, marginBottom: 14 }}>{(['all', 'recipes', 'foods', 'portions'] as const).map(value => <SegmentButton key={value} label={value === 'all' ? 'Everything' : value[0].toUpperCase() + value.slice(1)} accessibilityLabel={`Library ${value}`} selected={section === value} onPress={() => setSection(value)} />)}</View>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.surface, borderRadius: 12, padding: 4, marginBottom: 14 }}>{(['all', 'recipes', 'foods', 'portions'] as const).map(value => <View key={value} style={{ width: layout.compact ? '50%' : '25%', flexDirection: 'row' }}><SegmentButton label={value === 'all' ? 'Everything' : value[0].toUpperCase() + value.slice(1)} accessibilityLabel={`Library ${value}`} selected={section === value} onPress={() => setSection(value)} /></View>)}</View>
 
     <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}><TextButton label={archived ? 'Show active library' : 'Archived foods and recipes'} onPress={() => setArchived(!archived)} /></View>
     {section === 'all' && !archived && <MealShortcuts library query={query} />}
@@ -63,7 +65,7 @@ export default function Recipes() {
 
       </Pressable><Button label="Log 1" icon="plus" compact accessibilityLabel="Log one serving" disabled={app.busy} onPress={() => void app.run(() => app.repo.logRecipe(recipe), 'One serving logged')} /></View>
 
-      <View style={{ flexDirection: 'row', gap: 16, marginLeft: recipe.photo ? 67 : 47, marginTop: 3, alignItems: 'center' }}><IconButton name={recipe.favorite ? 'check' : 'bookmark'} label={`${recipe.favorite ? 'Unfavourite' : 'Favourite'} ${recipe.name}`} onPress={() => void app.run(() => app.repo.saveRecipe({ ...recipe, favorite: !recipe.favorite }))} /><TextButton label={archived ? 'Restore' : 'Archive'} accessibilityLabel={`${archived ? 'Restore' : 'Archive'} recipe ${recipe.name}`} disabled={app.busy} onPress={() => void app.run(() => app.repo.archiveLibrary('recipe', recipe.id, !archived), archived ? 'Recipe restored' : 'Recipe archived · restore it in Archived foods and recipes')} /><TextButton label="Edit" onPress={() => router.push({ pathname: '/recipe', params: { id: recipe.id } })} /></View>
+      <View style={{ flexDirection: 'row', gap: 16, marginLeft: recipe.photo ? 67 : 47, marginTop: 3, alignItems: 'center' }}><IconButton selected={recipe.favorite} name={recipe.favorite ? 'check' : 'bookmark'} label={`${recipe.favorite ? 'Unfavourite' : 'Favourite'} ${recipe.name}`} onPress={() => void app.run(() => app.repo.saveRecipe({ ...recipe, favorite: !recipe.favorite }))} /><TextButton label={archived ? 'Restore' : 'Archive'} accessibilityLabel={`${archived ? 'Restore' : 'Archive'} recipe ${recipe.name}`} disabled={app.busy} onPress={() => void app.run(() => app.repo.archiveLibrary('recipe', recipe.id, !archived), archived ? 'Recipe restored' : 'Recipe archived · restore it in Archived foods and recipes')} /><TextButton accessibilityLabel={`Edit recipe ${recipe.name}`} label="Edit" onPress={() => router.push({ pathname: '/recipe', params: { id: recipe.id } })} /></View>
 
     </View>)}</>}
 

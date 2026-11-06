@@ -37,7 +37,7 @@ export default function Today() {
   return <Screen support title="Today" header={<>
     <Pressable accessibilityRole="button" accessibilityLabel="Choose date" onPress={() => setPicker(true)} style={({ pressed }) => ({ flex: 1, minHeight: 54, opacity: pressed ? .6 : 1 })}>
       <Text accessibilityRole="header" style={styles.title}>{isToday ? 'Today' : dateLabel(date, { weekday: 'long' })}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}><Text style={{ fontSize: 14, color: colors.secondary }}>{dateLabel(date, { weekday: 'short', day: 'numeric', month: 'long' })}</Text><Icon name="calendar" size={12} color={colors.secondary} /></View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}><Text style={{ flexShrink: 1, fontSize: 14, color: colors.secondary }}>{dateLabel(date, { weekday: 'short', day: 'numeric', month: 'long' })}</Text><Icon name="calendar" size={12} color={colors.secondary} /></View>
     </Pressable>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0 }}><IconButton name="settings" label="Your data and settings" onPress={() => router.push('/settings')} /></View>
   </>}>

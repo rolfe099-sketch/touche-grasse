@@ -14,7 +14,7 @@ export function SaveMealShortcut({ draft, entries }: { draft?: Draft; entries?: 
   if (!open) return <TextButton label="Save shortcut" accessibilityLabel="Save meal shortcut" disabled={app.busy} onPress={() => setOpen(true)} />;
   return <View testID="save-shortcut" style={{ paddingVertical: 8, borderTopWidth: 1, borderColor: colors.line }}>
     <Field compact label="Shortcut name" placeholder="My breakfast" value={name} maxLength={80} onChangeText={setName} autoCapitalize="sentences" returnKeyType="done" />
-    <View style={{ flexDirection: 'row', gap: 12 }}><Button compact label="Save to Today" disabled={app.busy || !normalize(name)} onPress={() => void app.run(() => draft ? app.repo.saveDraftShortcut(name, draft) : app.repo.saveShortcut(name, entries!), 'Shortcut saved').then(ok => { if (ok) { setOpen(false); setName(''); } })} /><TextButton label="Cancel" onPress={() => setOpen(false)} /></View>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}><Button compact label="Save to Today" disabled={app.busy || !normalize(name)} onPress={() => void app.run(() => draft ? app.repo.saveDraftShortcut(name, draft) : app.repo.saveShortcut(name, entries!), 'Shortcut saved').then(ok => { if (ok) { setOpen(false); setName(''); } })} /><TextButton label="Cancel" onPress={() => setOpen(false)} /></View>
   </View>;
 }
 
@@ -36,13 +36,13 @@ export function MealShortcuts({ library = false, query = '', onLogged }: { libra
             <Button compact primary label="Log" icon="plus" accessibilityLabel={`Log shortcut ${item.name}`} disabled={app.busy || !!availability} onPress={() => void app.run(() => repo.logShortcut(item.id), `${item.name} logged`).then(ok => { if (ok) onLogged?.(); })} />
           </>}
         </View>
-        {library && !item.deletedAt && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {library && !item.deletedAt && <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
           <TextButton label={item.pinned ? 'Unpin' : 'Pin to Today'} accessibilityLabel={`${item.pinned ? 'Unpin' : 'Pin'} shortcut ${item.name}`} disabled={app.busy} onPress={() => void app.run(() => repo.changeShortcut(item.id, { pinned: !item.pinned }))} />
           <TextButton label="Edit foods" accessibilityLabel={`Edit foods in ${item.name}`} disabled={app.busy || !!repo.quickEntry.repeatReview || !!repo.quickEntry.mealEdit} onPress={() => void app.run(() => repo.startMealEdit({ shortcutId: item.id })).then(ok => { if (ok) router.push('/entry'); })} />
           <TextButton label="Rename" accessibilityLabel={`Rename shortcut ${item.name}`} onPress={() => { setEditing(editing === item.id ? undefined : item.id); setName(item.name); }} />
           <IconButton name="trash" destructive label={`Delete shortcut ${item.name}`} disabled={app.busy} onPress={() => void app.run(() => repo.changeShortcut(item.id, { deleted: true }), 'Shortcut deleted · restore it under Deleted')} />
         </View>}
-        {editing === item.id && !item.deletedAt && <View><Field compact label="New shortcut name" value={name} onChangeText={setName} maxLength={80} /><View style={{ flexDirection: 'row', gap: 12 }}><TextButton label="Save name" disabled={app.busy || !normalize(name)} onPress={() => void app.run(() => repo.saveShortcut(name, item.entries, item.id), 'Shortcut renamed').then(ok => { if (ok) setEditing(undefined); })} /><TextButton label="Cancel rename" onPress={() => setEditing(undefined)} /></View></View>}
+        {editing === item.id && !item.deletedAt && <View><Field compact label="New shortcut name" value={name} onChangeText={setName} maxLength={80} /><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}><TextButton label="Save name" disabled={app.busy || !normalize(name)} onPress={() => void app.run(() => repo.saveShortcut(name, item.entries, item.id), 'Shortcut renamed').then(ok => { if (ok) setEditing(undefined); })} /><TextButton label="Cancel rename" onPress={() => setEditing(undefined)} /></View></View>}
       </View>;
     })}
   </View>;

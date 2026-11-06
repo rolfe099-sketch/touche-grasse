@@ -1,5 +1,6 @@
+import { readableLayout } from '../src/domain/accessibility';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { useWindowDimensions, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { dayKey, display, logName, logQuantity, meals, parseAmount, Unit } from '../src/domain/model';
 import { localDate } from '../src/domain/history';
@@ -12,6 +13,7 @@ import { DeleteLogButton } from '../src/ui/Diary';
 import { SaveMealShortcut } from '../src/ui/MealShortcuts';
 
 export default function LogDetails() {
+  const { width, fontScale } = useWindowDimensions(), layout = readableLayout(width, fontScale);
   const app = useApp(), params = useLocalSearchParams<{ id: string }>();
   const entry = app.repo.logs.find(log => log.id === params.id);
   const snapshot = entry?.snapshot;
@@ -48,8 +50,8 @@ export default function LogDetails() {
     <TextButton label="Repeat with changes" disabled={app.busy || !!app.repo.quickEntry.repeatReview} onPress={() => void app.run(() => app.repo.startRepeatReview([entry.id])).then(ok => { if (ok) router.push('/entry'); })} />
     <TextButton label="Edit meal" disabled={app.busy || !!app.repo.quickEntry.mealEdit || !!app.repo.quickEntry.repeatReview} onPress={() => void app.run(() => app.repo.startMealEdit([entry.id])).then(ok => { if (ok) router.push('/entry'); })} />
     <Section title="Correct this entry" />
-    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-end' }}><View style={{ flex: 1 }}><Field label="Logged amount" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" /></View><View style={{ flexDirection: 'row', gap: 5, marginBottom: 14 }}>{(snapshot.kind === 'recipe' ? ['servings', 'g'] as const : ['g', 'kg', 'ml', 'l'] as const).map(value => <Button key={value} label={value} compact selected={unit === value} onPress={() => setUnit(value)} />)}</View></View>
-    <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ flex: 1 }}><Field label="Date (YYYY-MM-DD)" value={date} onChangeText={setDate} /></View><View style={{ width: 92 }}><Field label={entry.timePrecision === 'day' ? 'Time (optional)' : 'Time (HH:MM)'} value={time} onChangeText={setTime} /></View></View>
+    <View style={{ flexDirection: layout.compact ? 'column' : 'row', gap: 10, alignItems: layout.compact ? 'stretch' : 'flex-end' }}><View style={{ flex: 1 }}><Field label="Logged amount" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" /></View><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginBottom: 14 }}>{(snapshot.kind === 'recipe' ? ['servings', 'g'] as const : ['g', 'kg', 'ml', 'l'] as const).map(value => <Button key={value} label={value} compact selected={unit === value} onPress={() => setUnit(value)} />)}</View></View>
+    <View style={{ flexDirection: layout.compact ? 'column' : 'row', gap: 10 }}><View style={{ flex: 1 }}><Field label="Date (YYYY-MM-DD)" value={date} onChangeText={setDate} /></View><View style={{ width: layout.compact ? '100%' : 110 }}><Field label={entry.timePrecision === 'day' ? 'Time (optional)' : 'Time (HH:MM)'} value={time} onChangeText={setTime} /></View></View>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 15 }}>{meals.map(value => <Button key={value} label={mealLabel(value)} compact selected={meal === value} onPress={() => setMeal(value)} />)}</View>
     <Text style={[styles.subtitle, { fontSize: 13, marginBottom: 17 }]}>Amounts use the food or recipe values captured when you logged. The previous version is kept with every correction.</Text>
     <Button label="Save correction" primary disabled={app.busy} onPress={() => void save()} />
