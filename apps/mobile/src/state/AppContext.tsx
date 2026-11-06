@@ -14,6 +14,7 @@ import { openRecoveryPort } from '../platform/recovery';
 import { LabelForm } from '../domain/nutritionLabel';
 import { MealEdit } from '../domain/mealEditor';
 import { WeightDraft } from '../domain/weight';
+import { PortionReview } from '../domain/portionDraft';
 import { VoiceDraft } from '../domain/quickEntry';
 import { parseArchive } from '../domain/archive';
 
@@ -22,6 +23,7 @@ type State = { repo: Repository; revision: number; draft: Draft; setDraft: (draf
   busy: boolean; error: string | null; notice: string | null; noticeUndo: boolean; clearError: () => void; clearNotice: () => void;
   recovery?: RecoveryService; recoveryRevision: number; recoveryError: string | null;
   saveRecovery: (reason?: RecoveryMeta['reason']) => Promise<RecoveryMeta | null>;
+  savePortionDraft: (batchId: string, review: PortionReview) => Promise<boolean>;
   saveRepeatAmounts: (reviewId: string, amounts: string[]) => Promise<void>;
   saveMealEditDraft: (edit: MealEdit) => Promise<void>;
   saveWeightDraft: (draft: WeightDraft | null) => Promise<void>;
@@ -94,6 +96,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     catch (reason) { setRecoveryError('The latest recovery copy could not be saved. Earlier copies are kept.'); throw reason; }
   };
   return <Context.Provider value={{ repo, draft, revision, busy, error, notice, noticeUndo, run,
+    async savePortionDraft(batchId, review) { const saved = await repo.savePortionDraft(batchId, review); setRevision(value => value + 1); return saved; },
     async saveMealEditDraft(edit) { await repo.saveMealEditDraft(edit); setRevision(value => value + 1); },
     async saveWeightDraft(draft) { await repo.saveWeightDraft(draft); setRevision(value => value + 1); },
     async saveLabelDraft(key, form) { await repo.saveLabelDraft(key, form); setRevision(value => value + 1); },

@@ -22,6 +22,8 @@ The focus is fast, trustworthy logging. This list reflects implemented work and 
 
 - Compact recipe and stock-aware portion controls, direct Today batch destinations, exact serving/gram switches, final-fraction shortcuts, Tomorrow logging and immediate acknowledged recipe draft saves. See [meal-prep finishing pass](docs/MEAL_PREP_FINISH.md); hardware acceptance remains pending.
 
+- Per-batch portion drafts retain partial amounts, units and explicit dates across restart and backup. Consumed/reset markers prevent stale writes and old-copy resurrection; automatic Today follows the day. See [portion-draft continuity](docs/PORTION_DRAFT_CONTINUITY.md).
+
 ## Next priorities
 
 1. **Coverage from real failures:** improve Norwegian product/alias coverage using observed missed queries and readable package evidence. Preserve sources, missing-nutrient states and raw/cooked distinctions.

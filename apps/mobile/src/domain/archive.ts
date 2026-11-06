@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validatePortionDrafts } from './portionDraft';
 import { D, Draft, draftSchema, foodSchema, logSchema, nutrients, preparedBatchSchema, profileSchema, recipeDraftSchema, recipeSchema, recipeTotal, snapshotNutrition, validateFood } from './model';
 import { quickEntrySchema } from './quickEntry';
 import { targetChangeSchema } from './targets';
@@ -60,6 +61,7 @@ export function parseArchive(json: string, { checkInventory = true }: { checkInv
   }
   for (const [key, value] of Object.entries(backup.recipeDrafts ?? {})) validateStoredIdentity({ kind: 'recipeDraft', id: key, key: `recipeDraft:${key}`, value });
   validateEditableDrafts(backup.draft, backup.recipeDrafts);
+  validatePortionDrafts(backup.quickEntry?.portionDrafts, backup.preparedBatches ?? []);
   if (checkInventory) assertBatchCapacity(backup.preparedBatches ?? [], backup.logs);
   return backup;
 }

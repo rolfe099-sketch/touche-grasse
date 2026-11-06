@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { portionDraftsSchema } from './portionDraft';
 import { Draft, draftSchema, Food, foodNutrition, IdFactory, Line, lineIngredient, LogEntry, meals, parseEntry, total } from './model';
 import { FoodIndex, normalize } from './search';
 import { cookingRecordAllowed, preparationNeedsChoice } from './foodLanguage';
@@ -13,6 +14,7 @@ export type VoiceDraft = z.infer<typeof voiceDraftSchema>;
 export const quickEntrySchema = z.object({
   matches: z.record(z.string().max(500), z.object({ foodId: z.string().max(200), confirmedAt: z.iso.datetime() })),
   favorites: z.array(z.string().max(200)).max(20000),
+  portionDrafts: portionDraftsSchema.optional(),
   lastMeal: z.enum(meals).optional(),
   entryMethod: z.enum(['text', 'voice', 'scan']).optional(),
   voiceDraft: voiceDraftSchema.nullable().optional(),

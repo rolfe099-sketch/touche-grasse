@@ -9,9 +9,11 @@ import { openBrowserStorage } from '../src/storage/indexeddb';
 import { migration1, openSQLStorage, SQLDatabase } from '../src/storage/sqlite';
 import { StorageAdapter, put } from '../src/storage/contract';
 import { editLiveLine, matchIngredient, reviewInput, recentMealBatches, updateLiveText } from '../src/domain/quickEntry';
+import { openPortionReview, PortionReview } from '../src/domain/portionDraft';
+import { inspectRecoveryJSON } from '../src/domain/recovery';
 import { batchBalance } from '../src/domain/portions';
 import { Repository } from '../src/domain/repository';
-import { dayKey, D, emptyDraft, Food, nutrients, Recipe, recipeTotal } from '../src/domain/model';
+import { dayKey, D, emptyDraft, Food, foodNutrition, nutrients, Recipe, recipeTotal } from '../src/domain/model';
 import catalogJSON from '../src/data/catalog.json';
 import { dayComplete } from '../src/domain/dailyWorkflows';
 import { emptyTargets, targetOn } from '../src/domain/targets';
@@ -34,6 +36,55 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  const portionRecipe = (): Recipe => ({ id: randomUUID(), name: 'Portion draft fixture', ingredients: [{ id: randomUUID(), food: oil, quantity: '60', unit: 'g' }], servings: '6', cookedWeightGrams: '600', steps: [], favorite: false });
+  it('preserves independent partial portion drafts through export, restore and repository initialization', async () => {
+    const storage = await adapter(), repo = await setup(storage), a = await repo.createPreparedBatch(portionRecipe()), b = await repo.createPreparedBatch(portionRecipe());
+    const first = openPortionReview(a, [], undefined, randomUUID), second = openPortionReview(b, [], undefined, randomUUID);
+    first.value = { quantities: { servings: '2,5', g: '15,' }, unit: 'g', dateText: '2026-' };
+    second.value = { quantities: { servings: '0.5', g: '' }, unit: 'servings' };
+    await Promise.all([repo.savePortionDraft(a.id, first), repo.savePortionDraft(b.id, second)]);
+    const json = await repo.exportJSON(), expected = structuredClone(repo.quickEntry.portionDrafts);
+    expect(repo.logs).toEqual([]); expect(batchBalance(a, repo.logs).servings.toFixed()).toBe('6'); expect(inspectRecoveryJSON(json).drafts.portions).toBe(2);
+    const reopened = await setup(storage); expect(reopened.quickEntry.portionDrafts).toEqual(expected);
+    const restored = await setup(await adapter()); await restored.restoreJSON(json); expect(restored.quickEntry.portionDrafts).toEqual(expected); expect(restored.logs).toEqual([]);
+    await restored.close(); await reopened.close();
+  });
+  it('logs and consumes a portion draft in one transaction, preserves a failed draft and blocks stale writes', async () => {
+    const storage = await adapter(); let fail = false;
+    const repo = await setup({ ...storage, commit: (changes, revision) => { if (fail) { fail = false; return Promise.reject(new Error('portion commit failed')); } return storage.commit(changes, revision); } });
+    const batch = await repo.createPreparedBatch(portionRecipe()), review = openPortionReview(batch, [], undefined, randomUUID);
+    review.value.quantities.servings = '2'; review.value.dateText = '2026-11-07'; await repo.savePortionDraft(batch.id, review);
+    const before = await repo.exportJSON(); fail = true; await expect(repo.logPortionReview(batch.id, review, new Date('2026-11-06T12:00:00Z'))).rejects.toThrow('portion commit failed'); expect(await repo.exportJSON()).toBe(before);
+    const logged = await repo.logPortionReview(batch.id, review, new Date('2026-11-06T12:00:00Z')); expect(logged?.nutrition).toEqual(foodNutrition(oil, '20', 'g')); expect(logged?.timePrecision).toBe('day'); expect(dayKey(new Date(logged!.recordedAt))).toBe('2026-11-07');
+    expect(repo.quickEntry.portionDrafts?.[batch.id]).toEqual({ id: review.id, value: null }); expect(batchBalance(batch, repo.logs).servings.toFixed()).toBe('4');
+    expect(await repo.savePortionDraft(batch.id, review)).toBe(false); await expect(repo.logPortionReview(batch.id, review, new Date('2026-11-06T12:00:00Z'))).rejects.toThrow('already finished'); expect(repo.logs).toHaveLength(1);
+    const next = openPortionReview(batch, repo.logs, repo.quickEntry.portionDrafts?.[batch.id], randomUUID); next.value.quantities.servings = '0.5'; await repo.savePortionDraft(batch.id, next);
+    expect(await repo.savePortionDraft(batch.id, review)).toBe(false); await repo.undoLast(); expect(repo.logs).toEqual([]); expect(repo.quickEntry.portionDrafts?.[batch.id]?.value).toEqual(next.value); await repo.close();
+  });
+  it('reset markers resist old backups and failed reset writes leave the draft intact', async () => {
+    const storage = await adapter(); let fail = false;
+    const repo = await setup({ ...storage, commit: (changes, revision) => { if (fail) { fail = false; return Promise.reject(new Error('reset failed')); } return storage.commit(changes, revision); } });
+    const batch = await repo.createPreparedBatch(portionRecipe()), review = openPortionReview(batch, [], undefined, randomUUID); review.value.quantities.servings = '2'; await repo.savePortionDraft(batch.id, review);
+    const old = await repo.exportJSON(); fail = true; await expect(repo.clearPortionDraft(batch.id, review)).rejects.toThrow('reset failed'); expect(await repo.exportJSON()).toBe(old);
+    await repo.clearPortionDraft(batch.id, review); await repo.restoreJSON(old); expect(repo.quickEntry.portionDrafts?.[batch.id]?.value).toBeNull();
+    const fresh = await setup(await adapter()); await fresh.restoreJSON(old); expect(fresh.quickEntry.portionDrafts?.[batch.id]?.value).toEqual(review.value); await fresh.close(); await repo.close();
+  });
+  it('keeps a pending custom portion while quick logging and refuses overdraw without altering either', async () => {
+    const repo = await setup(await adapter()), batch = await repo.createPreparedBatch(portionRecipe()), review = openPortionReview(batch, [], undefined, randomUUID);
+    review.value = { quantities: { servings: '6', g: '' }, unit: 'servings', dateText: '2026-11-07' }; await repo.savePortionDraft(batch.id, review);
+    await repo.logPreparedBatch(batch.id); expect(repo.quickEntry.portionDrafts?.[batch.id]?.value).toEqual(review.value); const before = await repo.exportJSON();
+    await expect(repo.logPortionReview(batch.id, review, new Date('2026-11-06T12:00:00Z'))).rejects.toThrow('exceeds'); expect(await repo.exportJSON()).toBe(before);
+    const invalid: PortionReview = { ...review, value: { ...review.value, dateText: '2026-' } }; await expect(repo.logPortionReview(batch.id, invalid)).rejects.toThrow(); expect(await repo.exportJSON()).toBe(before); await repo.close();
+  });
+  it('refuses orphaned or incompatible gram drafts at import and startup without changing stored records', async () => {
+    for (const kind of ['orphan', 'weight']) {
+      const storage = await adapter(), repo = await setup(storage), recipe = { ...portionRecipe(), cookedWeightGrams: null }, batch = await repo.createPreparedBatch(recipe);
+      const portionDrafts = { [kind === 'orphan' ? 'missing' : batch.id]: { id: 'review', value: { quantities: { servings: '1', g: '100' }, unit: 'g' } } }, before = await repo.exportJSON(), archive = JSON.parse(before); archive.quickEntry.portionDrafts = portionDrafts;
+      expect(() => repo.restoreJSON(JSON.stringify(archive))).toThrow(kind === 'orphan' ? 'missing' : 'measured'); expect(await repo.exportJSON()).toBe(before);
+      const loaded = await storage.load(); await storage.commit([put('quickEntry', 'preferences', { ...repo.quickEntry, portionDrafts })], loaded.revision); const raw = await storage.load();
+      const candidate = new Repository({ ...storage, close: async () => undefined }, randomUUID); await expect(candidate.initialize(catalog, async () => undefined)).rejects.toThrow(kind === 'orphan' ? 'missing' : 'measured'); expect(await storage.load()).toEqual(raw); await storage.close();
+    }
+  });
   it('refuses unrecognized backup fields instead of silently discarding newer data', async () => {
     const repo = await setup(await adapter()); await repo.logDraft(draftFor()); const original = await repo.exportJSON();
     for (const location of ['archive', 'food', 'snapshot', 'draft', 'preferences']) {
@@ -771,5 +822,20 @@ for (const platform of ['IndexedDB', 'SQLite'] as const) it(`reopens a deleted d
     const final = await setup(await open()); expect(final.logs).toEqual([original]); expect(final.undo).toEqual([]); await final.close();
   } finally {
     if (folder) { if (!path.resolve(folder).startsWith(path.resolve(tmpdir()) + path.sep + 'tg-delete-')) throw new Error('Unexpected cleanup path'); rmSync(folder, { recursive: true }); }
+  }
+});
+
+for (const platform of ['IndexedDB', 'SQLite'] as const) it(`reopens portion drafts and consumed markers on ${platform} after closing the store`, async () => {
+  const name = randomUUID(), folder = platform === 'SQLite' ? mkdtempSync(path.join(tmpdir(), 'tg-portion-drafts-')) : null;
+  const open = () => platform === 'IndexedDB' ? openBrowserStorage(name) : openSQLStorage(driver(new DatabaseSync(path.join(folder!, 'library.sqlite'))));
+  try {
+    const repo = await setup(await open()), recipe: Recipe = { id: randomUUID(), name: 'Restart portions', ingredients: [{ id: 'oil', food: oil, quantity: '60', unit: 'g' }], servings: '6', cookedWeightGrams: '600', steps: [], favorite: false }, batch = await repo.createPreparedBatch(recipe);
+    const review = openPortionReview(batch, [], undefined, randomUUID); review.value = { quantities: { servings: '2,5', g: '15,' }, unit: 'g', dateText: '2026-' }; await repo.savePortionDraft(batch.id, review); const old = await repo.exportJSON(); await repo.close();
+    const reopened = await setup(await open()); expect(reopened.quickEntry.portionDrafts?.[batch.id]?.value).toEqual(review.value); expect(reopened.logs).toEqual([]);
+    const edit = openPortionReview(batch, [], reopened.quickEntry.portionDrafts?.[batch.id], randomUUID); edit.value = { ...edit.value, unit: 'servings', dateText: undefined, quantities: { ...edit.value.quantities, servings: '1' } }; await reopened.logPortionReview(batch.id, edit); await reopened.close();
+    const final = await setup(await open()); expect(final.logs).toHaveLength(1); expect(final.logs[0].nutrition).toEqual(foodNutrition(oil, '10', 'g')); expect(final.quickEntry.portionDrafts?.[batch.id]?.value).toBeNull();
+    await final.restoreJSON(old); expect(final.quickEntry.portionDrafts?.[batch.id]?.value).toBeNull(); await final.undoLast(); expect(final.logs).toEqual([]); expect(batchBalance(batch, final.logs).servings.toFixed()).toBe('6'); await final.close();
+  } finally {
+    if (folder) { const resolved = path.resolve(folder), expected = path.resolve(tmpdir()) + path.sep + 'tg-portion-drafts-'; if (!resolved.startsWith(expected)) throw new Error('Unexpected cleanup path'); rmSync(resolved, { recursive: true }); }
   }
 });

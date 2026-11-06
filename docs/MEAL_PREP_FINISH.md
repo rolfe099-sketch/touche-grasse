@@ -35,7 +35,7 @@ Other checks cover measured/unmeasured batches, recurring unit conversion, a fin
 ## Remaining limits
 
 - Physical iPhone keyboard, interruption, offline and full restoration acceptance remain pending in the existing development app. No standalone build is created.
-- Saved-batch amount/date controls are local screen state, as before. Recipe and Quick Log drafts persist; a full reload resets unsent portion/date controls. Completed portions and stock persist.
+- At this milestone, unsent saved-batch amount/date controls were local screen state. The later [portion-draft continuity pass](PORTION_DRAFT_CONTINUITY.md) now preserves those edits; completed portions and stock continue to persist.
 - Exact conversions must fit the supported six decimal places. An unrepresentable conversion requires an explicit amount rather than an estimate.
 - A process killed before a successful save acknowledgement may interrupt a pending write. The save indicator does not claim otherwise.
 - Custom dates use an inline YYYY-MM-DD field; Tomorrow is the new shortcut. No new screen or date-picker dependency is introduced.

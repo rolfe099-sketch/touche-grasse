@@ -1,3 +1,4 @@
+import { PortionReview, portionDraftAmount, portionDraftDate, portionFormSchema, portionReviewWritable, portionSlotSchema, validatePortionDrafts } from './portionDraft';
 import { parseArchive, utf8Size, validateEditableDrafts } from './archive';
 import { assertSupportedFields } from './compatibility';
 import { LoggingDestination } from './loggingDestination';
@@ -83,6 +84,7 @@ export class Repository {
     const earliest = [this.profile.firstUsedAt, ...this.logs.flatMap(log => [log.recordedAt, ...(log.corrections ?? []).map(c => c.previous.recordedAt)])].sort()[0];
     validateEditableDrafts(this.draft, this.recipeDrafts, 'diary');
     assertBatchCapacity(this.preparedBatches, this.logs);
+    validatePortionDrafts(this.quickEntry.portionDrafts, this.preparedBatches);
     this.sortAndIndex();
     if (!loaded.records.some(record => record.kind === 'profile') || earliest !== this.profile.firstUsedAt) await this.commit([put('profile', 'identity', { firstUsedAt: earliest })]);
   }
@@ -614,19 +616,56 @@ export class Repository {
       this.preparedBatches = [...this.preparedBatches, batch]; this.foods = foods; this.quickEntry = preferences; this.draft = nextDraft; this.sortAndIndex(); return batch;
     });
   }
+  private makePreparedLog(id: string, quantity: string, unit: 'servings' | 'g', at: Date, meal?: Meal, dateOnly = false) {
+    const batch = this.preparedBatches.find(batch => batch.id === id); if (!batch) throw new Error('This saved batch is unavailable.');
+    portionFits(batch, this.logs, quantity, unit);
+    const snapshot: LogEntry['snapshot'] = { kind: 'recipe', recipe: structuredCopy(batch.recipe), quantity, unit };
+    return logSchema.parse({ id: this.id(), batchId: this.id(), preparedBatchId: id, recordedAt: at.toISOString(), ...(dateOnly ? { timePrecision: 'day' as const } : {}), meal: meal ?? batch.meal, snapshot, nutrition: snapshotNutrition(snapshot) });
+  }
+  private async commitPreparedLog(log: LogEntry, preferences?: QuickEntryPreferences) {
+    await this.commit([...(preferences ? [put('quickEntry', 'preferences', preferences)] : []), put('log', log.id, log), put('undo', 'latest', [log.id]), put('deletionUndo', 'latest', [])]);
+    if (preferences) this.quickEntry = preferences;
+    this.logs = [...this.logs, log]; this.undo = [log.id]; this.deletionUndo = []; this.sortAndIndex(); return log;
+  }
+  savePortionDraft(batchId: string, input: PortionReview) {
+    const review = { ...input, value: portionFormSchema.parse(structuredCopy(input.value)) }; portionSlotSchema.parse(review);
+    return this.serialized(async () => {
+      if (!portionReviewWritable(this.quickEntry.portionDrafts?.[batchId], review)) return false;
+      const portionDrafts = { ...this.quickEntry.portionDrafts, [batchId]: { id: review.id, value: review.value } };
+      validatePortionDrafts(portionDrafts, this.preparedBatches);
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, portionDrafts });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences; return true;
+    });
+  }
+  clearPortionDraft(batchId: string, review: PortionReview) {
+    return this.serialized(async () => {
+      if (!this.preparedBatches.some(batch => batch.id === batchId)) throw new Error('This saved batch is unavailable.');
+      if (!portionReviewWritable(this.quickEntry.portionDrafts?.[batchId], review)) return false;
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, portionDrafts: { ...this.quickEntry.portionDrafts, [batchId]: { id: review.id, value: null } } });
+      await this.commit([put('quickEntry', 'preferences', preferences)]); this.quickEntry = preferences; return true;
+    });
+  }
+  logPortionReview(batchId: string, input: PortionReview, now = new Date()) {
+    const review = { ...input, value: portionFormSchema.parse(structuredCopy(input.value)) }; portionSlotSchema.parse(review);
+    return this.serialized(async () => {
+      const slot = this.quickEntry.portionDrafts?.[batchId];
+      if (slot?.id === review.id && slot.value === null) throw new Error('This portion review is already finished. Reopen the batch.');
+      if (!portionReviewWritable(slot, review)) throw new Error('This portion review changed. Reopen the batch.');
+      const amount = portionDraftAmount(review.value); if (amount === null) throw new Error('Check the portion amount.');
+      const key = portionDraftDate(review.value, now), today = dayKey(now), at = key === today ? now : localDate(key);
+      const log = this.makePreparedLog(batchId, amount, review.value.unit, at, undefined, key !== today);
+      const preferences = quickEntrySchema.parse({ ...this.quickEntry, portionDrafts: { ...this.quickEntry.portionDrafts, [batchId]: { id: review.id, value: null } } });
+      return this.commitPreparedLog(log, preferences);
+    });
+  }
   logPreparedBatch(id: string, quantity?: string, unit?: 'servings' | 'g', at?: Date, meal?: Meal): Promise<LogEntry>;
   logPreparedBatch(id: string, quantity: string, unit: 'servings' | 'g', at: Date, meal: Meal | undefined, voiceId: string, dateOnly?: boolean): Promise<LogEntry | undefined>;
   logPreparedBatch(id: string, quantity = '1', unit: 'servings' | 'g' = 'servings', at = new Date(), meal?: Meal, voiceId?: string, dateOnly = false): Promise<LogEntry | undefined> {
     return this.serialized(async () => {
       if (!this.voiceReady(voiceId)) return;
-      const batch = this.preparedBatches.find(batch => batch.id === id); if (!batch) throw new Error('This saved batch is unavailable.');
-      portionFits(batch, this.logs, quantity, unit);
-      const snapshot: LogEntry['snapshot'] = { kind: 'recipe', recipe: structuredCopy(batch.recipe), quantity, unit };
-      const log = logSchema.parse({ id: this.id(), batchId: this.id(), preparedBatchId: id, recordedAt: at.toISOString(), ...(dateOnly ? { timePrecision: 'day' as const } : {}), meal: meal ?? batch.meal, snapshot, nutrition: snapshotNutrition(snapshot) });
-      const preferences = this.voicePreferences({ ...this.quickEntry, ...(meal ? { lastMeal: meal } : {}) }, voiceId);
-      await this.commit([...(voiceId || meal ? [put('quickEntry', 'preferences', preferences)] : []),put('log', log.id, log), put('undo', 'latest', [log.id]), put('deletionUndo', 'latest', [])]);
-      if (voiceId || meal) this.quickEntry = preferences;
-      this.logs = [...this.logs, log]; this.undo = [log.id]; this.deletionUndo = []; this.sortAndIndex(); return log;
+      const log = this.makePreparedLog(id, quantity, unit, at, meal, dateOnly);
+      const preferences = voiceId || meal ? this.voicePreferences({ ...this.quickEntry, ...(meal ? { lastMeal: meal } : {}) }, voiceId) : undefined;
+      return this.commitPreparedLog(log, preferences);
     });
   }
   async waitForWrites() { await this.queue; }
@@ -666,7 +705,8 @@ export class Repository {
       const recipeDrafts = { ...backup.recipeDrafts, ...this.recipeDrafts };
       const matches = { ...backup.quickEntry?.matches };
       for (const [query, match] of Object.entries(this.quickEntry.matches)) if (options.recoverMissing || !matches[query] || matches[query].confirmedAt <= match.confirmedAt) matches[query] = match;
-      const preferences = quickEntrySchema.parse({ lastMeal: this.quickEntry.lastMeal ?? backup.quickEntry?.lastMeal, voiceDraft: this.quickEntry.voiceDraft !== undefined ? this.quickEntry.voiceDraft : backup.quickEntry?.voiceDraft, voiceLocale: this.quickEntry.voiceLocale ?? backup.quickEntry?.voiceLocale, lastVoiceCommand: this.quickEntry.lastVoiceCommand ?? backup.quickEntry?.lastVoiceCommand, weightDraft: this.quickEntry.weightDraft !== undefined ? this.quickEntry.weightDraft : backup.quickEntry?.weightDraft, weightUnit: this.quickEntry.weightUnit ?? backup.quickEntry?.weightUnit, mealEdit: this.quickEntry.mealEdit ?? backup.quickEntry?.mealEdit, libraryHidden: backup.quickEntry?.libraryHidden || this.quickEntry.libraryHidden ? { ...backup.quickEntry?.libraryHidden, ...this.quickEntry.libraryHidden } : undefined, entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, labelDrafts: backup.quickEntry?.labelDrafts || this.quickEntry.labelDrafts ? { ...backup.quickEntry?.labelDrafts, ...this.quickEntry.labelDrafts } : undefined, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
+      const preferences = quickEntrySchema.parse({ portionDrafts: backup.quickEntry?.portionDrafts || this.quickEntry.portionDrafts ? { ...backup.quickEntry?.portionDrafts, ...this.quickEntry.portionDrafts } : undefined, lastMeal: this.quickEntry.lastMeal ?? backup.quickEntry?.lastMeal, voiceDraft: this.quickEntry.voiceDraft !== undefined ? this.quickEntry.voiceDraft : backup.quickEntry?.voiceDraft, voiceLocale: this.quickEntry.voiceLocale ?? backup.quickEntry?.voiceLocale, lastVoiceCommand: this.quickEntry.lastVoiceCommand ?? backup.quickEntry?.lastVoiceCommand, weightDraft: this.quickEntry.weightDraft !== undefined ? this.quickEntry.weightDraft : backup.quickEntry?.weightDraft, weightUnit: this.quickEntry.weightUnit ?? backup.quickEntry?.weightUnit, mealEdit: this.quickEntry.mealEdit ?? backup.quickEntry?.mealEdit, libraryHidden: backup.quickEntry?.libraryHidden || this.quickEntry.libraryHidden ? { ...backup.quickEntry?.libraryHidden, ...this.quickEntry.libraryHidden } : undefined, entryMethod: this.quickEntry.entryMethod ?? backup.quickEntry?.entryMethod, repeatReview: this.quickEntry.repeatReview ?? backup.quickEntry?.repeatReview, labelDrafts: backup.quickEntry?.labelDrafts || this.quickEntry.labelDrafts ? { ...backup.quickEntry?.labelDrafts, ...this.quickEntry.labelDrafts } : undefined, matches, favorites: [...new Set([...(backup.quickEntry?.favorites ?? []), ...this.quickEntry.favorites])] });
+      validatePortionDrafts(preferences.portionDrafts, preparedBatches);
       const clearingDeletion = this.isDeletionUndo || this.isCorrectionUndo;
       await this.commit([...weighIns.map(item => put('weighIn', item.id, item)), ...mealCorrections.map(item => put('mealCorrection', item.id, item)), ...shortcuts.map(item => put('mealShortcut', item.id, item)), ...dayReviews.map(item => put('dayReview', item.id, item)), ...targets.map(change => put('targetChange', change.id, change)), ...preparedBatches.map(batch => put('preparedBatch', batch.id, batch)), ...foods.map(f => put('food', f.id, f)), ...recipes.map(r => put('recipe', r.id, r)), ...logs.map(l => put('log', l.id, l)), ...Object.entries(recipeDrafts).map(([key, value]) => put('recipeDraft', key, value)), put('draft', 'active', draft), put('quickEntry', 'preferences', preferences), ...(backup.profile ? [put('profile', 'identity', backup.profile)] : []), ...(clearingDeletion ? [put('undo', 'latest', []), put('deletionUndo', 'latest', [])] : [])]);
       if (clearingDeletion) { this.undo = []; this.deletionUndo = []; }

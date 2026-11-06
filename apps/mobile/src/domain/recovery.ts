@@ -18,12 +18,14 @@ export function inspectRecoveryJSON(json: string) {
   const record = (input: unknown) => input !== null && typeof input === 'object' && !Array.isArray(input);
   for (const key of ['weighIns', 'mealCorrections', 'shortcuts', 'dayReviews', 'preparedBatches', 'targets']) if (value[key] !== undefined && !Array.isArray(value[key])) throw new Error('This backup has an invalid record list. Choose another file.');
   for (const key of ['draft', 'quickEntry', 'recipeDrafts']) if (value[key] !== undefined && !record(value[key])) throw new Error('This backup has invalid draft data. Choose another file.');
+  if (value.quickEntry?.portionDrafts !== undefined && !record(value.quickEntry.portionDrafts)) throw new Error('This backup has invalid portion drafts. Choose another file.');
   if (value.quickEntry?.labelDrafts !== undefined && !record(value.quickEntry.labelDrafts)) throw new Error('This backup has invalid label drafts. Choose another file.');
   if ((value.weighIns ?? []).some((item: unknown) => !record(item)) || (value.shortcuts ?? []).some((item: unknown) => !record(item))) throw new Error('This backup has an invalid record list. Choose another file.');
   const drafts = {
     meal: !!(value.draft.text || value.draft.lines?.length || value.draft.recipeName || value.draft.splitPlan),
     recipes: Object.keys(value.recipeDrafts ?? {}).length,
     labels: Object.keys(value.quickEntry?.labelDrafts ?? {}).length,
+    portions: Object.values(value.quickEntry?.portionDrafts ?? {}).filter(slot => slot !== null && typeof slot === 'object' && 'value' in slot && slot.value !== null).length,
     command: !!value.quickEntry?.voiceDraft?.text,
     weight: !!value.quickEntry?.weightDraft,
     adjustment: !!(value.quickEntry?.mealEdit || value.quickEntry?.repeatReview),
