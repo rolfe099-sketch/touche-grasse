@@ -18,12 +18,27 @@ async function archive(page: Page) {
   await page.goto('/settings'); const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export backup', exact: true }).click();
   return JSON.parse(readFileSync((await (await download).path())!, 'utf8'));
 }
+// A hard browser reload cancels pending page work. Observe the actual stored
+// draft before testing restart persistence, rather than treating a preview as a
+// transaction acknowledgement. No production test hooks are involved.
+async function splitSaved(page: Page) {
+  await expect.poll(() => page.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open('touche-grasse-v1', 2);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result, tx = db.transaction('records', 'readonly'), read = tx.objectStore('records').get('draft:active');
+      tx.oncomplete = () => { db.close(); resolve(read.result?.value?.splitPlan); };
+      tx.onabort = () => { db.close(); reject(tx.error); };
+    };
+  }))).toMatchObject({ servingsText: '6', cookedWeightText: '600' });
+}
+
 test('Quick Entry creates six saved servings without logging, consumes only chosen amounts and retains the rest across dates/reload', async ({ page }) => {
   await meal(page); await page.getByRole('button', { name: 'Split into servings', exact: true }).click();
   await page.getByRole('textbox', { name: 'Batch name', exact: true }).fill('Six-serving chicken pasta');
   await page.getByTestId('batch-servings').fill('6'); await page.getByTestId('batch-weight').fill('600');
   await expect(page.getByTestId('batch-preview')).toContainText('186.04 kcal per serving'); await expect(page.getByTestId('batch-preview')).toContainText('1.86 kcal per gram');
-  await page.reload(); await expect(page.getByTestId('batch-servings')).toHaveValue('6'); await expect(page.getByTestId('batch-weight')).toHaveValue('600');
+  await splitSaved(page); await page.reload(); await expect(page.getByTestId('batch-servings')).toHaveValue('6'); await expect(page.getByTestId('batch-weight')).toHaveValue('600');
   await expect(page.getByTestId('commit-food')).toHaveCount(0);
   await page.getByTestId('save-batch').click(); await expect(page.getByTestId('remaining-portions')).toHaveText('6 servings left · 600 g');
   await page.screenshot({ path: path.join(output, 'six-servings-created-390.png') });
@@ -61,7 +76,7 @@ test('recipes can create a finite batch independently of their reusable template
   await expect(page.getByTestId('remaining-portions').filter({ visible: true })).toHaveText('6 servings left'); await expect(page.getByRole('button', { name: 'Grams', exact: true })).toHaveCount(1); // Existing recipe editor unit control remains; the saved-batch panel has no gram option.
   await page.goto('/'); await expect(page.getByTestId('log-row')).toHaveCount(0);
   await page.goto('/recipes'); await expect(page.getByRole('button', { name: 'Grams', exact: true })).toHaveCount(0);
-  await page.getByTestId('log-portion').click();
+  await page.getByTestId('log-portion').click(); await expect(page.getByTestId('remaining-portions')).toContainText('5 servings left');
   const backup = await archive(page); expect(backup.recipes).toHaveLength(1); expect(backup.preparedBatches).toHaveLength(1); expect(backup.logs).toHaveLength(1);
   for (const key of nutrients) expect(backup.logs[0].nutrition[key]).toBe(new D(all[key]!).div(6).toFixed());
 });

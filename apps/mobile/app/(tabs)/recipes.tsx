@@ -27,12 +27,12 @@ import { foodLabel } from '../../src/domain/foodLanguage';
 export default function Recipes() {
   const { width, fontScale } = useWindowDimensions(), layout = readableLayout(width, fontScale);
 
-  const app = useApp(), params = useLocalSearchParams<{ view?: string }>();
+  const app = useApp(), params = useLocalSearchParams<{ view?: string; batch?: string }>();
 
   const [section, setSection] = useState<'all' | 'recipes' | 'foods' | 'portions'>('all'), [query, setQuery] = useState('');
 
-  const [archived, setArchived] = useState(false);
-  useEffect(() => { if (params.view === 'shortcuts') { setSection('all'); setQuery(''); setArchived(false); router.setParams({ view: undefined }); } }, [params.view]);
+  const [archived, setArchived] = useState(false), [portionRequest, setPortionRequest] = useState({ batchId: params.batch, sequence: 0 });
+  useEffect(() => { if (params.view === 'shortcuts') { setSection('all'); setQuery(''); setArchived(false); router.setParams({ view: undefined }); } else if (params.view === 'portions') { setPortionRequest(previous => ({ batchId: params.batch, sequence: previous.sequence + 1 })); setSection('portions'); setQuery(''); setArchived(false); router.setParams({ view: undefined, batch: undefined }); } }, [params.view, params.batch]);
   const hidden = (kind: string, id: string) => !!app.repo.quickEntry.libraryHidden?.[`${kind}:${id}`];
   const recipes = [...app.repo.recipes].filter(recipe => hidden('recipe', recipe.id) === archived).filter(recipe => recipe.name.toLowerCase().includes(query.toLowerCase())).sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name, 'en'));
 
@@ -42,12 +42,12 @@ export default function Recipes() {
 
     <View style={{ marginBottom: 12 }}><SearchField label="Search your library" placeholder="Recipes, foods, portions" value={query} onChangeText={setQuery} clearLabel="Clear library search" hint="Filter your recipes, saved foods and portions." /></View>
 
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.surface, borderRadius: 12, padding: 4, marginBottom: 14 }}>{(['all', 'recipes', 'foods', 'portions'] as const).map(value => <View key={value} style={{ width: layout.compact ? '50%' : '25%', flexDirection: 'row' }}><SegmentButton label={value === 'all' ? 'Everything' : value[0].toUpperCase() + value.slice(1)} accessibilityLabel={`Library ${value}`} selected={section === value} onPress={() => setSection(value)} /></View>)}</View>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.surface, borderRadius: 12, padding: 4, marginBottom: 14 }}>{(['all', 'recipes', 'foods', 'portions'] as const).map(value => <View key={value} style={{ width: layout.compact ? '50%' : '25%', flexDirection: 'row' }}><SegmentButton label={value === 'all' ? 'Everything' : value[0].toUpperCase() + value.slice(1)} accessibilityLabel={`Library ${value}`} selected={section === value} onPress={() => { setSection(value); if (value === 'portions') setArchived(false); }} /></View>)}</View>
 
-    <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}><TextButton label={archived ? 'Show active library' : 'Archived foods and recipes'} onPress={() => setArchived(!archived)} /></View>
+    {section !== 'portions' && <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}><TextButton label={archived ? 'Show active library' : 'Archived foods and recipes'} onPress={() => setArchived(!archived)} /></View>}
     {section === 'all' && !archived && <MealShortcuts library query={query} />}
 
-    {!archived && (section === 'all' || section === 'portions') && <SavedPortionList query={query} />}
+    {!archived && (section === 'all' || section === 'portions') && <SavedPortionList query={query} batchId={portionRequest.batchId} requestId={portionRequest.sequence} showEmpty={section === 'portions'} />}
 
     {(section === 'all' || section === 'recipes') && <>
 

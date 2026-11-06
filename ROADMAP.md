@@ -20,6 +20,8 @@ The focus is fast, trustworthy logging. This list reflects implemented work and 
 
 - Observed ingredient-search failures now have explicit English/Norwegian phrase coverage, complete-word relevance and raw/cooked mismatch guards. See [everyday matching coverage](docs/FOOD_MATCHING_COVERAGE.md).
 
+- Compact recipe and stock-aware portion controls, direct Today batch destinations, exact serving/gram switches, final-fraction shortcuts, Tomorrow logging and immediate acknowledged recipe draft saves. See [meal-prep finishing pass](docs/MEAL_PREP_FINISH.md); hardware acceptance remains pending.
+
 ## Next priorities
 
 1. **Coverage from real failures:** improve Norwegian product/alias coverage using observed missed queries and readable package evidence. Preserve sources, missing-nutrient states and raw/cooked distinctions.

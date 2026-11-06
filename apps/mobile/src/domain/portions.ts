@@ -39,3 +39,27 @@ export function batchRecipe(recipe: Recipe, name: string, servings: string, cook
   const copy = { ...recipe, name: name.trim() || recipe.name, servings, cookedWeightGrams, photo: undefined };
   recipeTotal(copy); return copy;
 }
+
+// Unit switches use only a measured batch weight. A recurring result is left
+// blank for review instead of silently rounding the portion being eaten.
+export function convertPortionAmount(recipe: Recipe, text: string, from: 'servings' | 'g', to: 'servings' | 'g'): string | null {
+  const amount = parseAmount(text);
+  if (amount === null || new D(amount).lte(0)) return null;
+  if (from === to) return amount;
+  if (recipe.cookedWeightGrams === null) return null;
+  const numerator = new D(amount).times(to === 'g' ? positive(recipe.cookedWeightGrams) : positive(recipe.servings));
+  const denominator = to === 'g' ? positive(recipe.servings) : positive(recipe.cookedWeightGrams);
+  const scaled = numerator.times(1000000);
+  if (!scaled.mod(denominator).isZero()) return null;
+  const converted = numerator.div(denominator);
+  return converted.lte(1000000) ? converted.toFixed() : null;
+}
+export function quickBatchPortion(batch: PreparedBatch, logs: LogEntry[]): { quantity: string; unit: 'servings' | 'g' } | undefined {
+  const balance = batchBalance(batch, logs);
+  if (balance.numerator.lte(0)) return undefined;
+  if (balance.servings.gte(1)) return { quantity: '1', unit: 'servings' };
+  // Prove representability before division; recurring inventory is not rounded.
+  const denominator = balance.weight ?? new D(1);
+  if (balance.numerator.times(1000000).mod(denominator).isZero()) return { quantity: balance.servings.toFixed(), unit: 'servings' };
+  if (balance.grams && balance.numerator.times(1000000).mod(balance.totalServings).isZero()) return { quantity: balance.grams.toFixed(), unit: 'g' };
+}
