@@ -60,6 +60,7 @@
         "projectId": "dc9ddfe0-981c-467b-9691-fcb6f38e5d19"
       }
     },
-    "owner": "aftertext"
+    "owner": "aftertext",
+    "icon": "./assets/brand/app-icon.png"
   }
 }

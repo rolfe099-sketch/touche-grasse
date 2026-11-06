@@ -30,6 +30,7 @@ export default function Settings() {
     <Button label="Open source documentation" onPress={() => void Linking.openURL('https://www.matvaretabellen.no/api/')} />
     <Text style={[styles.body, { marginTop: 12 }]}>Open Food Facts</Text><Text style={[styles.subtitle, { fontSize: 13 }]}>Optional barcode data. Check the package before saving; source records and your label corrections remain identified.</Text>
     <View style={{ flexDirection: 'row', gap: 24 }}><TextButton label="Open Food Facts ↗" onPress={() => void Linking.openURL('https://world.openfoodfacts.org/')} /><TextButton label="ODbL license ↗" onPress={() => void Linking.openURL('https://opendatacommons.org/licenses/odbl/1-0/')} /></View>
+    <Section title="Privacy & support" /><Button label="Privacy policy" onPress={() => void Linking.openURL('https://rolfe099-sketch.github.io/touche-grasse/privacy/')} /><TextButton label="Contact support" onPress={() => void Linking.openURL('mailto:support@eriksenlabs.com')} />
     <Section title="Local storage" /><Text style={styles.subtitle}>This browser and Expo Go have separate local stores. Export and restore to move your records between them. Private browsing, clearing site data or uninstalling can remove local records.</Text>
   </Screen>;
 }
