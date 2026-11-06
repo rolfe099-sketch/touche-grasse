@@ -4,9 +4,9 @@ import path from 'node:path';
 import { D, nutrients, recipePortion, recipeTotal } from '../src/domain/model';
 import { recipeIdeaCopyId, recipeIdeas } from '../src/domain/recipeIdeas';
 
-const output = path.resolve('../../verification/discover');
+const output = path.resolve('../../verification/discover-overhaul');
 const first = recipeIdeas[0], copyId = recipeIdeaCopyId(first.recipe);
-async function ideas(page: Page) { await page.goto('/search'); await page.getByRole('button', { name: 'Meal ideas', exact: true }).click(); }
+async function ideas(page: Page) { await page.goto('/search'); await expect(page.getByRole('button', { name: 'Meal ideas', exact: true })).toHaveAttribute('aria-pressed', 'true'); }
 async function exported(page: Page) { await page.goto('/settings'); const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export backup', exact: true }).click(); return JSON.parse(readFileSync((await (await download).path())!, 'utf8')); }
 const file = (name: string) => path.join(output, `${name}-${test.info().project.name || 'chromium'}.png`);
 async function storedDraft(page: Page) {
@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => { mkdirSync(output, { recursive: true }); aw
 test('ingredient categories, nutrition limits and inline amounts preserve the one-tap add path', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const qrDownloads: string[] = []; page.on('request', request => { if (/cdn\.jsdelivr\.net\/npm\/jsqr/.test(request.url())) qrDownloads.push(request.url()); });
-  await page.goto('/search'); await page.getByRole('button', { name: 'Explore Meat', exact: true }).click();
+  await page.goto('/search'); await page.getByRole('button', { name: 'Ingredients', exact: true }).click(); await page.getByRole('button', { name: 'Explore Meat', exact: true }).click();
   await expect(page.getByTestId('food-mvt:03.205')).toBeVisible(); await expect(page.getByTestId('food-mvt:03.126')).toBeVisible(); await expect(page.getByTestId('food-mvt:03.242')).toHaveCount(0);
   await page.getByRole('button', { name: 'Nutrition filters', exact: true }).click(); await page.getByRole('textbox', { name: 'Minimum g', exact: true }).fill('22');
   await page.getByRole('button', { name: 'Sort foods by protein', exact: true }).click();
@@ -36,7 +36,7 @@ test('ingredient categories, nutrition limits and inline amounts preserve the on
   // IndexedDB commit before the helper deliberately replaces the entire page.
   await expect.poll(() => storedDraft(page)).toEqual([{ amount: '150', food: 'mvt:03.205' }]);
   const draft = await exported(page); expect(draft.logs).toEqual([]); expect(draft.draft.lines[0].food.id).toBe('mvt:03.205'); expect(draft.draft.lines[0].quantityText).toBe('150');
-  await page.goto('/search'); await page.getByTestId('search-input').fill('olive oil'); await page.getByRole('button', { name: 'Select Olive oil', exact: true }).click();
+  await page.goto('/search?view=ingredients'); await page.getByTestId('search-input').fill('olive oil'); await page.getByRole('button', { name: 'Select Olive oil', exact: true }).click();
   await expect(page.getByTestId('quantity-0')).toHaveValue('150'); await expect(page.getByTestId('quantity-1')).toHaveValue('100'); expect(errors).toEqual([]); expect(qrDownloads).toEqual([]);
 });
 
@@ -63,7 +63,7 @@ test('recipe search, source-based details and an editable Library copy survive r
 test('preparing a recipe creates uneaten portions; logging and Undo preserve exactly one sixth of the original snapshot', async ({ page }) => {
   const interactions: string[] = [], positions: { action: string; scrollRequired: boolean }[] = [];
   const tap = async (name: string) => { const target = page.getByRole('button', { name, exact: true }); const bounds = await target.boundingBox(); const bottom = page.viewportSize()!.height - (new URL(page.url()).pathname === '/search' ? 82 : 0); positions.push({ action: name, scrollRequired: !bounds || bounds.y < 0 || bounds.y + bounds.height > bottom }); await target.click(); interactions.push(name); };
-  await page.goto('/search'); await tap('Meal ideas'); await tap('View recipe Chicken pesto pasta'); await tap('Prepare batch');
+  await page.goto('/search'); await tap('View recipe Chicken pesto pasta'); await tap('Prepare batch');
   await expect(page.getByTestId('split-panel')).toBeVisible(); await expect(page.getByTestId('batch-servings')).toHaveValue('6');
   await page.screenshot({ path: file('batch-setup') });
   await tap('Save batch'); await expect(page.getByTestId('remaining-portions')).toContainText('6 servings left');
@@ -75,7 +75,7 @@ test('preparing a recipe creates uneaten portions; logging and Undo preserve exa
   await page.goto('/'); await expect(page.getByTestId('log-row')).toHaveCount(1); await page.getByRole('button', { name: 'Undo last log', exact: true }).click(); await expect(page.getByTestId('log-row')).toHaveCount(0);
   const undone = await exported(page); expect(undone.logs).toEqual([]); expect(undone.preparedBatches).toHaveLength(1);
   expect(positions.every(p => !p.scrollRequired)).toBe(true);
-  writeFileSync(path.join(output, `interactions-${test.info().project.name || 'chromium'}.json`), JSON.stringify({ viewport: page.viewportSize(), scope: 'From Discover, no optional changes; automated actions, not human time', actions: interactions, positions, tapsToSaveBatch: 4, tapsToLogFirstPortion: 5, scrollsRequired: positions.filter(p => p.scrollRequired).length, nutrition: archive.logs[0].nutrition, total: all }, null, 2));
+  writeFileSync(path.join(output, `interactions-${test.info().project.name || 'chromium'}.json`), JSON.stringify({ viewport: page.viewportSize(), scope: 'From Discover, no optional changes; automated actions, not human time', actions: interactions, positions, tapsToSaveBatch: 3, tapsToLogFirstPortion: 4, scrollsRequired: positions.filter(p => p.scrollRequired).length, nutrition: archive.logs[0].nutrition, total: all }, null, 2));
 });
 
 test('recipe collection and saves work with the network unavailable, without silently logging food', async ({ page }) => {
@@ -97,4 +97,36 @@ test('compact widths and enlarged browser text keep recipe actions readable and 
   for (const label of ['Save recipe', 'Prepare batch']) { const button = page.getByRole('button', { name: label, exact: true }); await button.scrollIntoViewIfNeeded(); const bounds = await button.boundingBox(); expect(bounds!.height).toBeGreaterThanOrEqual(44); expect(bounds!.x).toBeGreaterThanOrEqual(0); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(321); }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: file('large-text') }); await page.getByRole('button', { name: 'Save recipe', exact: true }).click(); await expect(page.getByRole('button', { name: 'Open saved copy', exact: true })).toBeVisible();
+});
+
+test('recipe-first browsing supports a one-tap save, saved-idea filtering and a compact ingredient/method review', async ({ page }) => {
+  await page.goto('/search'); await expect(page.getByRole('button', { name: 'Meal ideas', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('featured-recipe')).toBeVisible();
+  await page.screenshot({ path: file('overhaul-browse') });
+  await page.getByRole('button', { name: 'Save recipe Chicken pesto pasta', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Open saved recipe Chicken pesto pasta', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Saved recipes', exact: true }).click();
+  await expect(page.getByTestId('idea-chicken-pesto-pasta')).toHaveCount(1); await expect(page.getByTestId('idea-lemon-chicken-rice')).toHaveCount(0);
+  await page.getByRole('button', { name: 'View recipe Chicken pesto pasta', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Recipe ingredients', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('900 g', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Recipe method', exact: true }).click(); await expect(page.getByText(first.recipe.steps[0], { exact: true })).toBeVisible();
+  await page.screenshot({ path: file('overhaul-method') });
+  await page.getByRole('button', { name: 'Recipe ingredients', exact: true }).click();
+  await expect(page.getByTestId('idea-nutrition').getByTestId('nutrition-kcal')).toHaveText('638');
+  const copy = await exported(page); expect(copy.recipes).toHaveLength(1); expect(copy.logs).toEqual([]); expect(copy.preparedBatches ?? []).toEqual([]);
+});
+
+test('featured Prepare shortcut reaches uneaten stock in two taps and logs an exact serving in three', async ({ page }) => {
+  await page.goto('/search'); const actions = ['Prepare Chicken pesto pasta', 'Save batch', 'Log 1 serving'];
+  for (const name of actions) {
+    const button = page.getByRole('button', { name, exact: true }); await expect(button).toBeVisible(); const bounds = await button.boundingBox();
+    const bottom = page.viewportSize()!.height - (new URL(page.url()).pathname === '/search' ? 82 : 0);
+    expect(bounds!.y).toBeGreaterThanOrEqual(0); expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(bottom);
+    await button.click();
+    if (name === 'Save batch') await expect(page.getByTestId('remaining-portions')).toContainText('6 servings left');
+  }
+  await expect(page.getByTestId('remaining-portions')).toContainText('5 servings left');
+  const copy = await exported(page); expect(copy.logs).toHaveLength(1); expect(copy.logs[0].nutrition).toEqual(recipePortion(first.recipe));
+  writeFileSync(path.join(output, `overhaul-shortcut-${test.info().project.name || 'chromium'}.json`), JSON.stringify({ viewport: page.viewportSize(), actions, tapsToSaveBatch: 2, tapsToLogFirstServing: 3, scrollingRequired: false, nutrition: copy.logs[0].nutrition }, null, 2));
 });

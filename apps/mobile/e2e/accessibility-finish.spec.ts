@@ -31,11 +31,17 @@ async function archive(page: Page) {
   await page.goto('/settings');
   const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export backup', exact: true }).click(); return JSON.parse(readFileSync((await (await download).path())!, 'utf8'));
 }
+async function storedAmount(page: Page) {
+  return page.evaluate(() => new Promise<string | undefined>((resolve, reject) => {
+    const open = indexedDB.open('touche-grasse-v1'); open.onerror = () => reject(open.error);
+    open.onsuccess = () => { const db = open.result, tx = db.transaction('records', 'readonly'), draft = tx.objectStore('records').get('draft:active'); tx.oncomplete = () => { resolve(draft.result?.value.lines[0]?.quantityText); db.close(); }; tx.onerror = () => { db.close(); reject(tx.error); }; };
+  }));
+}
 test.beforeEach(async ({ page }) => { test.setTimeout(120000); mkdirSync(output, { recursive: true }); await page.setViewportSize({ width: 320, height: 700 }); await page.clock.setFixedTime(at); await page.emulateMedia({ reducedMotion: 'reduce' }); });
 
 test('main pages retain meaningful nutrient summaries, readable enlarged text and adequate search/chart targets', async ({ page }) => {
   await restore(page); const observations: Record<string, unknown> = {}, failures: string[] = [];
-  for (const [name, route] of [['today', '/'], ['library', '/recipes'], ['discover', '/search'], ['history', `/history?date=${key}&scope=week`]] as const) {
+  for (const [name, route] of [['today', '/'], ['library', '/recipes'], ['discover', '/search?view=ingredients'], ['history', `/history?date=${key}&scope=week`]] as const) {
     await page.goto(route); await expect(page.getByRole('heading', { name: ({ today: 'Today', library: 'Library', discover: 'Discover', history: 'History' })[name], exact: true })).toBeVisible();
     if (name === 'today') {
       const overview = page.getByTestId('today-overview'); await expect(overview.getByTestId('nutrition-kcal')).toHaveText('245');
@@ -68,7 +74,7 @@ test('main pages retain meaningful nutrient summaries, readable enlarged text an
 });
 
 test('search clears in one tap, keeps focus, accepts Return and opens an editable draft without eating it', async ({ page }) => {
-  await restore(page); await page.goto('/search');
+  await restore(page); await page.goto('/search?view=ingredients');
   const input = page.getByRole('textbox', { name: 'Search foods', exact: true });
   await input.fill('olivenolje'); await expect(page.getByRole('button', { name: 'Select Olive oil', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Clear food search', exact: true }).click(); await expect(input).toHaveValue(''); await expect(input).toBeFocused();
@@ -76,6 +82,8 @@ test('search clears in one tap, keeps focus, accepts Return and opens an editabl
   await page.getByRole('button', { name: 'Select Olive oil', exact: true }).click();
   await page.getByTestId('quantity-0').click(); await page.keyboard.insertText('15'); await expect(page.getByTestId('quantity-0')).toHaveValue('15');
   await expect(page.getByTestId('commit-food')).toBeEnabled();
+  // The preview is optimistic; verify the actual commit before a hard reload.
+  await expect.poll(() => storedAmount(page)).toBe('15');
   await page.reload(); await expect(page.getByTestId('quantity-0')).toHaveValue('15');
   const saved = await archive(page); expect(saved.logs).toEqual(fixture().logs); expect(saved.draft.lines[0].quantityText).toBe('15');
   await page.goto('/recipes'); const library = page.getByRole('textbox', { name: 'Search your library', exact: true });

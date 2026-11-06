@@ -67,7 +67,7 @@ test('everyday bilingual ingredients: relevant choices, exact totals, learned re
 });
 
 test('Discover uses the same relevant English/Norwegian matching without adding anything to the diary', async ({ page }) => {
-  await page.goto('/search'); const input = page.getByTestId('search-input');
+  await page.goto('/search?view=ingredients'); const input = page.getByTestId('search-input');
   for (const [query, id] of [['ground beef', 'mvt:03.126'], ['bell pepper', 'mvt:06.048'], ['kyllingbryst', 'mvt:03.205'], ['kokt ris', 'mvt:05.338']]) {
     await input.fill(query); await expect(page.getByTestId(`food-${id}`).first()).toBeVisible();
     await expect(page.getByText('No matches. Try another name, or add your own food.', { exact: true })).toHaveCount(0);

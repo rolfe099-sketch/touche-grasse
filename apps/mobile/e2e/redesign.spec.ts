@@ -45,7 +45,7 @@ test('redesigned navigation, Today one-tap saved portion, Library search and fou
   await expect(page.getByTestId('remaining-portions')).toContainText('5 servings left'); await page.getByRole('button', { name: 'Decrease servings to log', exact: true }).click(); await expect(page.getByTestId('portion-amount')).toHaveValue('1');
   await page.getByRole('button', { name: 'Library recipes', exact: true }).click(); await page.screenshot({ path: path.join(output, 'library-390.png') });
   await page.getByRole('button', { name: 'Library foods', exact: true }).click(); await page.getByRole('textbox', { name: 'Search your library' }).fill('olive'); await expect(page.getByTestId('food-mvt:08.019')).toBeVisible();
-  await page.getByRole('tab', { name: 'Discover', exact: true }).click(); await expect(page.getByRole('button', { name: 'Explore Ingredients', exact: true })).toBeVisible(); await page.screenshot({ path: path.join(output, 'discover-390.png') });
+  await page.getByRole('tab', { name: 'Discover', exact: true }).click(); await page.getByRole('button', { name: 'Ingredients', exact: true }).click(); await expect(page.getByRole('button', { name: 'Explore Ingredients', exact: true })).toBeVisible(); await page.screenshot({ path: path.join(output, 'discover-390.png') });
   await page.getByTestId('search-input').fill('kylling'); await expect(page.getByTestId('food-mvt:03.205')).toBeVisible();
   await page.getByRole('tab', { name: 'History', exact: true }).click();
   for (const name of ['Day', 'Week', 'Month', 'Lifetime']) { await page.getByRole('button', { name, exact: true }).click(); await expect(page.getByTestId('history-screen')).toBeVisible(); if (name === 'Week') await page.screenshot({ path: path.join(output, 'history-390.png') }); }

@@ -2,6 +2,8 @@
 
 Discover has two paths: Ingredients and Meal ideas. Both work from bundled data without an account or recipe-service API. The existing Today, Quick Log, Library and History workflows remain in place.
 
+The subsequent [visual and interaction overhaul](DISCOVER_OVERHAUL.md) makes Meal ideas the default, adds direct featured-recipe actions and updates the review composition. The calculation, source and persistence contracts described here remain unchanged.
+
 ## Ingredients
 
 Nine category controls browse a deliberately curated set of common ingredient records: the overview, meat, fish, grains, dairy/eggs, vegetables, fruit/berries, pulses/tofu and oils/nuts. This is an ingredient-picks collection, not an exhaustive classification of the 2,121 source foods. English/Norwegian search still covers the full food index, including personal products and existing learned-match priority.
@@ -44,7 +46,7 @@ Domain tests cover source identity, missing-record rejection, exact six-serving 
 
 Browser tests exercise ingredient browsing/filtering, inline amount changes, appending to a current Quick Log, recipe search, saving/editing/reloading copies, preparation, exact portion logging/Undo, offline saves and 320-pixel enlarged-text access. Screenshots use actual isolated app data. Browser WebKit is separate from physical iPhone acceptance; native keyboard comfort, cooking practicality and taste remain unverified.
 
-The basic route from Discover is two taps to save a recipe, four to save a batch and five to log its first portion, excluding optional edits. The measured first-recipe path requires no scrolling at 390×844 in Chromium and 393×852 in WebKit. The browser report records actions and whether their targets require scrolling; it does not measure human completion time or the native keyboard.
+From the initial ingredient-first landing, the implementation took three taps to save a recipe (including opening Meal ideas), four to save a batch and five to log its first portion, excluding optional edits. See the [overhaul measurements](DISCOVER_OVERHAUL.md) for the subsequent direct actions and recipe-first landing. Browser measurements do not establish human completion time or native keyboard behavior.
 
 ## Actual implementation
 

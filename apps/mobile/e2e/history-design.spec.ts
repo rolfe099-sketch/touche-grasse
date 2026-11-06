@@ -97,7 +97,7 @@ test('cookbook layout, inline amounts, retained recipe edits and English search 
   await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
   await page.getByRole('button', { name: 'Dismiss notification', exact: true }).click();
   await page.screenshot({ path: path.join(screenshots, 'cookbook-375.png') });
-  await page.getByRole('tab', { name: 'Discover', exact: true }).click();
+  await page.getByRole('tab', { name: 'Discover', exact: true }).click(); await page.getByRole('button', { name: 'Ingredients', exact: true }).click();
   await page.getByTestId('search-input').fill('olive oil');
   await expect(page.getByTestId('food-mvt:08.019')).toBeVisible();
 });

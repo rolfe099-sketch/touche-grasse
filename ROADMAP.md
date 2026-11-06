@@ -4,6 +4,8 @@ The focus is fast, trustworthy logging. This list reflects implemented work and 
 
 ## Implemented
 
+- Recipe-first Discover with 12 original offline recipes, illustrated browsing, direct save/prepare actions, saved-idea filtering, compact ingredients/method review and source-based nutrition. Ingredient exploration retains bilingual search, explicit reference units and inline amount edits. See [the Discover overhaul](docs/DISCOVER_OVERHAUL.md).
+
 - Live multi-ingredient Quick Log, verified English/Norwegian food matching, remembered product choices and explicit preparation ambiguity.
 - Voice/text/barcode entry, retained interrupted commands, cooking sequences, recipes, finite saved portions and one-action logging with Undo.
 - Label-photo OCR, crop/rotation, source comparison, explicit uncertain-unit confirmation and retained correction/rescan drafts.
