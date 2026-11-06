@@ -1,0 +1,15 @@
+{
+  "source": "Actual Expo web UI rendered in isolated WebKit; not physical iPhone captures",
+  "syntheticDiary": true,
+  "dimensions": [
+    1320,
+    2868
+  ],
+  "status": "Candidates: compare with native TestFlight before native listing use",
+  "files": [
+    "01-today.png",
+    "02-quick-log.png",
+    "03-discover.png",
+    "04-planner.png"
+  ]
+}
