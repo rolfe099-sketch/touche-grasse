@@ -1,5 +1,6 @@
+import { readableLayout } from '../domain/accessibility';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { display, Nutrition } from '../domain/model';
 import { Text } from './Text';
 import { colors } from './theme';
@@ -7,6 +8,7 @@ import { Reveal } from './Motion';
 
 export type ChartPoint = { key: string; label: string; fullLabel: string; nutrition: Nutrition | null; detail: string };
 export function IntakeChart({ points, onOpen, metric = 'kcal', onMetric, openLabel = 'Open day' }: { points: ChartPoint[]; onOpen?: (key: string) => void; metric?: keyof Nutrition; onMetric?: (metric: keyof Nutrition) => void; openLabel?: string }) {
+  const { width, fontScale } = useWindowDimensions(), layout = readableLayout(width, fontScale);
   const [selected, setSelected] = useState([...points].reverse().find(point => point.nutrition)?.key ?? points[0]?.key);
   const period = points.map(p => p.key).join(',');
   useEffect(() => { setSelected([...points].reverse().find(point => point.nutrition)?.key ?? points[0]?.key); }, [period]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -14,7 +16,7 @@ export function IntakeChart({ points, onOpen, metric = 'kcal', onMetric, openLab
   const ceiling = Math.max(1, ...points.map(p => Number(p.nutrition?.[metric] ?? 0)));
   const color = ({ kcal: colors.ocean, protein: colors.forrest, carbohydrate: colors.tangerine, fat: colors.toffee, fiber: colors.lavender })[metric];
   return <View>
-    {onMetric && <View style={{ flexDirection: 'row', gap: 0, marginBottom: 12 }}>{(['kcal', 'protein', 'carbohydrate', 'fat', 'fiber'] as const).map(key => <Pressable key={key} accessibilityRole="button" accessibilityState={{ selected: metric === key }} accessibilityLabel={`Chart ${key === 'carbohydrate' ? 'carbs' : key}`} onPress={() => onMetric(key)} style={{ flex: 1, minHeight: 44, alignItems: 'center', paddingHorizontal: 4, justifyContent: 'center', borderBottomWidth: metric === key ? 2 : 0, borderColor: color }}><Text style={{ fontSize: 13, fontWeight: metric === key ? '700' : '400', color: metric === key ? colors.ink : colors.secondary }}>{({ kcal: 'Energy', protein: 'Protein', carbohydrate: 'Carbs', fat: 'Fat', fiber: 'Fiber' })[key]}</Text></Pressable>)}</View>}
+    {onMetric && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 0, marginBottom: 12 }}>{(['kcal', 'protein', 'carbohydrate', 'fat', 'fiber'] as const).map(key => <Pressable key={key} accessibilityRole="button" accessibilityState={{ selected: metric === key }} accessibilityLabel={`Chart ${key === 'carbohydrate' ? 'carbs' : key}`} onPress={() => onMetric(key)} style={{ flex: layout.compact ? undefined : 1, flexGrow: 1, flexBasis: layout.compact ? '30%' : 0, minHeight: 44, alignItems: 'center', paddingHorizontal: 4, justifyContent: 'center', borderBottomWidth: metric === key ? 2 : 0, borderColor: color }}><Text style={{ maxWidth: '100%', flexShrink: 1, textAlign: 'center', fontSize: 13, fontWeight: metric === key ? '700' : '400', color: metric === key ? colors.ink : colors.secondary }}>{({ kcal: 'Energy', protein: 'Protein', carbohydrate: 'Carbs', fat: 'Fat', fiber: 'Fiber' })[key]}</Text></Pressable>)}</View>}
     {point && <Reveal trigger={`${selected}:${metric}`} style={{ minHeight: 66, flexDirection: 'row', flexWrap: 'wrap', rowGap: 8, justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: colors.surface, borderRadius: 10, borderLeftWidth: 3, borderColor: color }}>
       <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 120 }}><Text style={{ fontWeight: '600', fontSize: 14 }}>{point.fullLabel}</Text><Text style={{ fontSize: 12, color: colors.secondary }}>{point.detail}</Text></View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Text style={{ fontWeight: '700', fontSize: 19 }}>{point.nutrition ? display(point.nutrition[metric], metric === 'kcal' ? 0 : 1) : '–'}<Text style={{ fontSize: 11 }}> {metric === 'kcal' ? 'kcal' : 'g'}</Text></Text>

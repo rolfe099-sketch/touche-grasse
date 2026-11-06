@@ -53,6 +53,14 @@ test('main pages retain meaningful nutrient summaries, readable enlarged text an
     }
     if (!before) { await page.setViewportSize({ width: 390, height: 844 }); await page.screenshot({ path: path.join(output, `${test.info().project.name || 'chromium'}-${name}-390.png`) }); await page.setViewportSize({ width: 320, height: 700 }); }
     await enlargeText(page); await page.screenshot({ path: path.join(output, `${before ? 'before' : test.info().project.name || 'chromium'}-${name}-large-text.png`) });
+    if (name === 'history' && !before) {
+      const energy = (await page.getByRole('button', { name: 'Chart kcal', exact: true }).boundingBox())!, fat = (await page.getByRole('button', { name: 'Chart fat', exact: true }).boundingBox())!;
+      expect(fat.y).toBeGreaterThan(energy.y);
+      for (const metric of ['kcal', 'protein', 'carbs', 'fat', 'fiber']) {
+        const contained = await page.getByRole('button', { name: `Chart ${metric}`, exact: true }).evaluate(element => { const parent = element.getBoundingClientRect(), label = element.lastElementChild!.getBoundingClientRect(); return label.left >= parent.left - 1 && label.right <= parent.right + 1; });
+        expect(contained, `${metric} label stays inside its target`).toBe(true);
+      }
+    }
     if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) failures.push(`${name} has horizontal page overflow.`);
   }
   writeFileSync(path.join(output, `${before ? 'before' : test.info().project.name || 'chromium'}-audit.json`), JSON.stringify({ dimensions: '320x700', browserTextMultiplier: 1.7, observations, failures }, null, 2));
