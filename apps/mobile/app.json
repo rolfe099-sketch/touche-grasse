@@ -14,7 +14,8 @@
         "NSSpeechRecognitionUsageDescription": "Recognize your spoken food and recipe commands.",
         "NSMicrophoneUsageDescription": "Use the microphone for meal commands when you tap Voice.",
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "2"
     },
     "web": {
       "bundler": "metro",
