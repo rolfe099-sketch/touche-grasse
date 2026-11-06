@@ -94,4 +94,6 @@ test('narrow forms give values room, cancel safely and preserve all historical s
   const weight = page.getByRole('textbox', { name: 'Weight · kg', exact: true }); expect((await weight.boundingBox())!.width).toBeGreaterThan(250);
   await weight.fill('80.5'); await page.getByRole('button', { name: 'Cancel weigh-in', exact: true }).click();
   const saved = await archive(page); expect(saved.logs).toEqual(fixture().logs); expect(saved.targets).toEqual(fixture().targets); expect(saved.weighIns).toEqual([]);
+  await page.clock.setFixedTime(new Date('2026-11-08T12:00:00Z')); await page.goto('/');
+  await expect(page.getByTestId('today-day-2026-11-08')).toBeInViewport({ ratio: 1 });
 });
