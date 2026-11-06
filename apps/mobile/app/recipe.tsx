@@ -14,7 +14,7 @@ import { SavedPortions, SplitIntoServings } from '../src/ui/Portions';
 import { pickPhoto } from '../src/platform/photo';
 
 export default function RecipeEditor() {
-  const app = useApp(), params = useLocalSearchParams<{ id?: string; from?: string; name?: string }>();
+  const app = useApp(), params = useLocalSearchParams<{ id?: string; from?: string; name?: string; prepare?: string }>();
   const existing = app.repo.recipes.find(r => r.id === params.id), key = params.id ?? 'new';
   const candidate = app.repo.recipeDrafts[key];
   const retained = candidate && (candidate.recipe.name.trim() || candidate.recipe.ingredients.length || candidate.instructions.trim()) ? candidate : undefined;
@@ -23,7 +23,8 @@ export default function RecipeEditor() {
   const [editingSteps, setEditingSteps] = useState(!existing), [query, setQuery] = useState('');
   const [showWeight, setShowWeight] = useState(recipe.cookedWeightGrams !== null);
   const [portion, setPortion] = useState('1'), [portionUnit, setPortionUnit] = useState<'g' | 'servings'>('servings');
-  const [splitPlan, setSplitPlan] = useState<SplitPlan | undefined>(candidate?.splitPlan);
+  const [splitPlan, setSplitPlan] = useState<SplitPlan | undefined>(candidate?.splitPlan ?? (params.prepare === '1' ? { name: recipe.name, servingsText: recipe.servings, cookedWeightText: recipe.cookedWeightGrams ?? '' } : undefined));
+  const [preparing, setPreparing] = useState(params.prepare === '1');
   const [createdBatch, setCreatedBatch] = useState<string>();
   const [draftError, setDraftError] = useState(''), [draftSaved, setDraftSaved] = useState(false);
   const saved = useRef(false), saving = useRef(false), latest = useRef({ recipe, instructions, splitPlan }); latest.current = { recipe, instructions, splitPlan };
@@ -59,7 +60,17 @@ export default function RecipeEditor() {
   try { const amount = parseAmount(portion); if (existing && amount) savedPortion = recipePortion(existing, amount, portionUnit); } catch { /* Invalid edits stay visible. */ }
   const steps = instructions.split('\n').map(s => s.trim()).filter(Boolean);
   const mealIngredients = params.from === 'draft' ? app.draft.lines.filter(line => !recipe.ingredients.some(i => i.id === line.id)) : [];
-  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen keyboardInsets={false} title={existing ? 'Edit recipe' : 'New recipe'} back trailing={<TextButton label="Save" disabled={app.busy} onPress={() => void save()} />}>
+  const splitEditor = splitPlan && preview && <SplitIntoServings recipe={current()} plan={splitPlan} onChange={setSplitPlan} onCancel={() => { setSplitPlan(undefined); setPreparing(false); }} onSave={async prepared => { const batch = await app.repo.createPreparedBatch(prepared); setCreatedBatch(batch.id); setSplitPlan(undefined); }} />;
+  const preparedPortions = createdBatch && app.repo.preparedBatches.find(batch => batch.id === createdBatch);
+  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen keyboardInsets={false} title={preparing ? preparedPortions ? 'Portions' : 'Meal prep' : existing ? 'Edit recipe' : 'New recipe'} back trailing={preparing ? <TextButton label="Edit recipe" disabled={app.busy} onPress={() => setPreparing(false)} /> : <TextButton label="Save" disabled={app.busy} onPress={() => void save()} />}>
+    {preparing ? <>
+      {!preparedPortions && <Text style={{ fontSize: 24, fontWeight: '600', lineHeight: 29, marginBottom: 5 }}>{recipe.name}</Text>}
+      <Text style={{ ...styles.subtitle, fontSize: 12, marginBottom: 12 }}>From your Library copy</Text>
+      {draftError && <Text accessibilityRole="alert" style={{ color: colors.error }}>{draftError}</Text>}
+      {splitEditor}
+      {!preview && <><Text style={styles.subtitle}>Check the ingredient amounts and serving count before preparing this batch.</Text><TextButton label="Check ingredients" onPress={() => setPreparing(false)} /></>}
+      {preparedPortions && <SavedPortions batch={preparedPortions} />}
+    </> : <>
     {!!retained && !!mealIngredients.length && <View style={{ backgroundColor: colors.orangeWash, borderRadius: 6, padding: 14, marginBottom: 15 }}><Text style={{ fontSize: 14, lineHeight: 20 }}>Your unfinished recipe is open. You can keep it and add the ingredients from your meal.</Text><TextButton label="Add this meal's ingredients" onPress={() => setRecipe({ ...recipe, ingredients: [...recipe.ingredients, ...mealIngredients.map(lineIngredient)] })} /></View>}
     <View style={{ borderTopWidth: 3, borderColor: colors.forrest, paddingTop: 14 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={[styles.label, { color: colors.forrest }]}>{existing ? 'Saved recipe' : 'Recipe details'}</Text><IconButton name={recipe.favorite ? 'check' : 'bookmark'} label={recipe.favorite ? 'Remove recipe favourite' : 'Favourite recipe'} onPress={() => setRecipe({ ...recipe, favorite: !recipe.favorite })} /></View>
@@ -89,8 +100,8 @@ export default function RecipeEditor() {
     <TextButton label={showWeight ? 'Hide cooked weight' : 'Add cooked batch weight'} onPress={() => setShowWeight(!showWeight)} />
     {showWeight && <><Field label="Cooked batch weight · g (optional)" value={recipe.cookedWeightGrams ?? ''} keyboardType="decimal-pad" onChangeText={cookedWeightGrams => setRecipe({ ...recipe, cookedWeightGrams })} /><Text style={[styles.subtitle, { fontSize: 12 }]}>Needed only for gram portions. Water loss changes weight, not total energy.</Text></>}
     <TextButton label="Split into servings" disabled={app.busy || !preview} onPress={() => setSplitPlan(splitPlan ?? { name: recipe.name, servingsText: recipe.servings, cookedWeightText: recipe.cookedWeightGrams ?? '' })} />
-    {splitPlan && preview && <SplitIntoServings recipe={current()} plan={splitPlan} onChange={setSplitPlan} onCancel={() => setSplitPlan(undefined)} onSave={async prepared => { const batch = await app.repo.createPreparedBatch(prepared); setCreatedBatch(batch.id); setSplitPlan(undefined); }} />}
-    {createdBatch && app.repo.preparedBatches.find(batch => batch.id === createdBatch) && <SavedPortions batch={app.repo.preparedBatches.find(batch => batch.id === createdBatch)!} />}
+    {splitEditor}
+    {preparedPortions && <SavedPortions batch={preparedPortions} />}
     <Section title="Per serving"><Text style={{ fontSize: 12, color: colors.secondary }}>{display(parseAmount(recipe.servings))} in the whole recipe</Text></Section>
     {preview ? <NutritionView value={preview} /> : <Text style={[styles.subtitle, { marginBottom: 18 }]}>Choose the ingredients and check amounts to calculate nutrition.</Text>}
     <Button label="Save recipe" primary disabled={app.busy || !preview} onPress={() => void save()} />
@@ -101,5 +112,6 @@ export default function RecipeEditor() {
       <Text style={[styles.subtitle, { fontSize: 12, marginTop: 8 }]}>Uses the last saved recipe. Save your edits first.</Text>
       <TextButton label="Save a separate copy" disabled={app.busy} onPress={() => void app.run(() => app.repo.duplicate(current()), 'Recipe copy saved')} />
     </View>}
+    </>}
   </Screen></KeyboardAvoidingView>;
 }

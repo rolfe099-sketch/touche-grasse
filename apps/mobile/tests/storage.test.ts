@@ -13,13 +13,14 @@ import { openPortionReview, PortionReview } from '../src/domain/portionDraft';
 import { inspectRecoveryJSON } from '../src/domain/recovery';
 import { batchBalance } from '../src/domain/portions';
 import { Repository } from '../src/domain/repository';
-import { dayKey, D, emptyDraft, Food, foodNutrition, nutrients, Recipe, recipeTotal } from '../src/domain/model';
+import { dayKey, D, emptyDraft, Food, foodNutrition, nutrients, Recipe, recipePortion, recipeTotal } from '../src/domain/model';
 import catalogJSON from '../src/data/catalog.json';
 import { dayComplete } from '../src/domain/dailyWorkflows';
 import { emptyTargets, targetOn } from '../src/domain/targets';
 import { confirmBarcodeProduct, parseBarcodeProduct } from '../src/domain/barcode';
 import { applyLabelColumn, parseNutritionLabel, reviewedLabelFood } from '../src/domain/nutritionLabel';
 import { milkCode, milkProduct } from './barcode-fixture';
+import { recipeIdeaCopyId, recipeIdeas } from '../src/domain/recipeIdeas';
 
 const catalog = catalogJSON as Food[], oil = catalog.find(f => f.id === 'mvt:08.019')!;
 function driver(db: DatabaseSync): SQLDatabase {
@@ -36,6 +37,32 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  it('saves a Discover copy once, preserves edits and source snapshots, and logs exactly one sixth only after a portion action', async () => {
+    const storage = await adapter(), repo = await setup(storage), source = recipeIdeas[0].recipe;
+    const [copy, again] = await Promise.all([repo.saveRecipeIdea(source), repo.saveRecipeIdea(source)]);
+    expect(copy.id).toBe(recipeIdeaCopyId(source)); expect(again).toEqual(copy); expect(repo.recipes).toHaveLength(1); expect(repo.logs).toEqual([]);
+    expect(copy.ingredients[0].id).not.toBe(source.ingredients[0].id);
+    const batch = await repo.createPreparedBatch(copy); expect(repo.logs).toEqual([]);
+    await repo.saveRecipe({ ...copy, name: 'My edited pasta', ingredients: copy.ingredients.map((i, n) => n ? i : { ...i, quantity: '100' }) });
+    expect((await repo.saveRecipeIdea(source)).name).toBe('My edited pasta'); expect(repo.preparedBatches[0].recipe).toEqual(copy);
+    await repo.logPreparedBatch(batch.id, '1', 'servings');
+    expect(repo.logs).toHaveLength(1); expect(repo.logs[0].nutrition).toEqual(recipePortion(copy));
+    const all = recipeTotal(copy); for (const key of nutrients) expect(repo.logs[0].nutrition[key]).toBe(new D(all[key]!).div(6).toFixed());
+    await repo.undoLast(); expect(repo.logs).toEqual([]);
+    const reopened = await setup({ ...storage, close: async () => undefined });
+    expect(reopened.recipes[0].name).toBe('My edited pasta'); expect(reopened.preparedBatches[0].recipe).toEqual(copy); expect(reopened.logs).toEqual([]);
+    const restored = await setup(await adapter()); await restored.restoreJSON(await reopened.exportJSON());
+    expect(restored.recipes).toEqual(reopened.recipes); expect(restored.preparedBatches).toEqual(reopened.preparedBatches);
+    await restored.close(); await storage.close();
+  });
+  it('rolls back a failed Discover save without advertising a saved recipe or changing the diary', async () => {
+    const storage = await adapter(); let fail = false;
+    const repo = await setup({ ...storage, commit: async (...args) => { if (fail) throw new Error('Fixture write failure'); return storage.commit(...args); } });
+    const before = await storage.load(); fail = true;
+    await expect(repo.saveRecipeIdea(recipeIdeas[0].recipe)).rejects.toThrow('Fixture write failure');
+    expect(repo.recipes).toEqual([]); expect(repo.logs).toEqual([]); expect(await storage.load()).toEqual(before);
+    fail = false; await repo.saveRecipeIdea(recipeIdeas[0].recipe); expect(repo.recipes).toHaveLength(1); await storage.close();
+  });
   const portionRecipe = (): Recipe => ({ id: randomUUID(), name: 'Portion draft fixture', ingredients: [{ id: randomUUID(), food: oil, quantity: '60', unit: 'g' }], servings: '6', cookedWeightGrams: '600', steps: [], favorite: false });
   it('preserves independent partial portion drafts through export, restore and repository initialization', async () => {
     const storage = await adapter(), repo = await setup(storage), a = await repo.createPreparedBatch(portionRecipe()), b = await repo.createPreparedBatch(portionRecipe());
@@ -837,5 +864,18 @@ for (const platform of ['IndexedDB', 'SQLite'] as const) it(`reopens portion dra
     await final.restoreJSON(old); expect(final.quickEntry.portionDrafts?.[batch.id]?.value).toBeNull(); await final.undoLast(); expect(final.logs).toEqual([]); expect(batchBalance(batch, final.logs).servings.toFixed()).toBe('6'); await final.close();
   } finally {
     if (folder) { const resolved = path.resolve(folder), expected = path.resolve(tmpdir()) + path.sep + 'tg-portion-drafts-'; if (!resolved.startsWith(expected)) throw new Error('Unexpected cleanup path'); rmSync(resolved, { recursive: true }); }
+  }
+});
+
+for (const platform of ['IndexedDB', 'SQLite'] as const) it(`reopens an edited Discover copy on ${platform} after closing the store`, async () => {
+  const name = randomUUID(), folder = platform === 'SQLite' ? mkdtempSync(path.join(tmpdir(), 'tg-discover-')) : null;
+  const open = () => platform === 'IndexedDB' ? openBrowserStorage(name) : openSQLStorage(driver(new DatabaseSync(path.join(folder!, 'library.sqlite'))));
+  try {
+    const repo = await setup(await open()), source = recipeIdeas[0].recipe, copy = await repo.saveRecipeIdea(source);
+    await repo.saveRecipe({ ...copy, name: 'My saved variation', ingredients: copy.ingredients.map((i, n) => n ? i : { ...i, quantity: '800' }) }); await repo.close();
+    const reopened = await setup(await open()); await reopened.saveRecipeIdea(source);
+    expect(reopened.recipes).toHaveLength(1); expect(reopened.recipes[0].name).toBe('My saved variation'); expect(reopened.recipes[0].ingredients[0].quantity).toBe('800'); expect(reopened.logs).toEqual([]); await reopened.close();
+  } finally {
+    if (folder) { const resolved = path.resolve(folder), expected = path.resolve(tmpdir()) + path.sep + 'tg-discover-'; if (!resolved.startsWith(expected)) throw new Error('Unexpected cleanup path'); rmSync(resolved, { recursive: true }); }
   }
 });

@@ -584,6 +584,18 @@ export class Repository {
     });
   }
   duplicate(recipe: Recipe) { return this.saveRecipe(duplicateRecipe(recipe, this.id)); }
+  saveRecipeIdea(input: Recipe) {
+    const source = recipeSchema.parse(structuredCopy(input)); recipeTotal(source);
+    const copyId = `discover:${source.id}`;
+    return this.serialized(async () => {
+      // Repeated taps/reopening Discover must not overwrite a user's edited copy.
+      const existing = this.recipes.find(recipe => recipe.id === copyId);
+      if (existing) return structuredCopy(existing);
+      const copy = { ...source, id: copyId, favorite: false, ingredients: source.ingredients.map(i => ({ ...i, id: this.id() })) };
+      await this.commit([put('recipe', copy.id, copy)]);
+      this.recipes = [...this.recipes, copy]; return structuredCopy(copy);
+    });
+  }
   logRecipe(recipe: Recipe, quantity = '1', unit: 'servings' | 'g' = 'servings', meal: Meal = 'Middag') {
     const log: LogEntry = { id: this.id(), batchId: this.id(), recordedAt: new Date().toISOString(), meal,
       snapshot: { kind: 'recipe', recipe: { ...structuredCopy(recipe), photo: undefined }, quantity, unit }, nutrition: recipePortion(recipe, quantity, unit) };

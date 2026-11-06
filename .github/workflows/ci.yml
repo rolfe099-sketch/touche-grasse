@@ -68,6 +68,7 @@ jobs:
             verification/label-capture
             verification/log-destinations
             verification/portion-drafts
+            verification/discover
             verification/meal-prep
             verification/food-matching
             verification/backup-upgrades

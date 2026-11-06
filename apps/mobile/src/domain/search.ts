@@ -58,8 +58,8 @@ export class FoodIndex {
     this.cache.clear();
   }
   isSaved(id: string) { return this.saved.has(id); }
-  search(input: string, savedOnly = false): Food[] {
-    const query = normalize(input.slice(0, 200)), key = `${savedOnly}:${query}`;
+  search(input: string, savedOnly = false, limit = 50): Food[] {
+    const query = normalize(input.slice(0, 200)), key = `${savedOnly}:${limit}:${query}`;
     const cached = this.cache.get(key); if (cached) return cached;
     const terms = ingredientSearchQuery(query).split(' ').filter(Boolean).slice(0, 12);
     const allowed = (id: string) => (!savedOnly || this.saved.has(id)) && (!query || cookingRecordAllowed(query, this.records.get(id)!.food));
@@ -80,7 +80,7 @@ export class FoodIndex {
       return (this.confirmed[query]?.foodId === id ? 10000 : 0) + (exact ? 5000 : 0) + (this.favorites.has(id) ? 3000 : 0) + (this.usage.has(id) ? 2000 : 0) + (this.saved.has(id) ? 1000 : 0) + ingredientRelevance(query, this.records.get(id)!.names);
     };
     relevant.sort((a, b) => tier(b) - tier(a) || (this.usage.get(b)?.count ?? 0) - (this.usage.get(a)?.count ?? 0) || (this.usage.get(b)?.latest ?? 0) - (this.usage.get(a)?.latest ?? 0) || this.records.get(a)!.food.name.length - this.records.get(b)!.food.name.length || this.records.get(a)!.food.name.localeCompare(this.records.get(b)!.food.name, 'nb'));
-    const result = relevant.slice(0, 50).map(id => this.records.get(id)!.food);
+    const result = relevant.slice(0, Math.max(0, limit)).map(id => this.records.get(id)!.food);
     if (this.cache.size >= 100) this.cache.clear();
     this.cache.set(key, result);
     return result;

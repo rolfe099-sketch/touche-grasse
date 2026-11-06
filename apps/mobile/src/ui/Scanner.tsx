@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Linking, Platform, View } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions } from '../platform/barcodeCamera';
 import { router, useFocusEffect } from 'expo-router';
 import { useApp } from '../state/AppContext';
 import { Button, Field, TextButton } from './components';
