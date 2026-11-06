@@ -10,6 +10,7 @@ import { RecoveryPanel } from '../src/ui/RecoveryPanel';
 import { inspectRecoveryJSON } from '../src/domain/recovery';
 import { PickedBackup } from '../src/platform/backup.types';
 import { BackupSummary } from '../src/ui/BackupSummary';
+import { parseArchive } from '../src/domain/archive';
 
 export default function Settings() {
   const app = useApp(); const [pending, setPending] = useState<PickedBackup>();
@@ -20,7 +21,7 @@ export default function Settings() {
     <Section title="Daily targets" /><TargetSettings />
     <Section title="Backup" /><Text style={[styles.subtitle, { marginBottom: 16 }]}>Take your library, recipes and diary with you. The file contains personal information. You choose where it goes.</Text>
     <View style={{ gap: 12 }}><Button label="Export backup" disabled={app.busy} onPress={() => void app.run(async () => exportBackup(await app.repo.exportJSON()))} />
-      <Button label="Choose a backup file" disabled={app.busy} onPress={() => { setPending(undefined); void app.run(async () => { const file = await pickBackup(); if (file) { inspectRecoveryJSON(file.json); setPending(file); } }); }} /></View>
+      <Button label="Choose a backup file" disabled={app.busy} onPress={() => { setPending(undefined); void app.run(async () => { const file = await pickBackup(); if (file) { inspectRecoveryJSON(file.json); parseArchive(file.json); setPending(file); } }); }} /></View>
     {pending && summary && <View style={{ paddingVertical: 18, gap: 12 }}><Text style={styles.body}>Merge this backup?</Text><BackupSummary summary={summary} filename={pending.name} /><Text style={styles.subtitle}>Existing diary entries and unfinished meals are kept. Matching foods and recipes are updated. Current shortcuts, weigh-ins, day reviews and library archive choices are kept. Export first if you would like an extra copy.</Text>
       <Button label="Confirm restore" primary disabled={app.busy} onPress={() => void app.run(() => app.restoreBackup(pending.json), 'Backup restored', true).then(ok => { if (ok) setPending(undefined); })} /><Button label="Cancel restore" disabled={app.busy} onPress={() => setPending(undefined)} /></View>}
     <RecoveryPanel />

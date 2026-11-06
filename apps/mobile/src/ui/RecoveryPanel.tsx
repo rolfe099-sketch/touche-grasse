@@ -7,6 +7,7 @@ import { Button, TextButton } from './components';
 import { Text } from './Text';
 import { colors } from './theme';
 import { BackupSummary } from './BackupSummary';
+import { parseArchive } from '../domain/archive';
 
 export function RecoveryPanel() {
   const app = useApp(), { recovery, recoveryRevision } = app;
@@ -26,7 +27,7 @@ export function RecoveryPanel() {
     {expanded && copies.map(copy => <View key={copy.id} testID="recovery-copy" style={{ borderTopWidth: 1, borderColor: colors.line, paddingVertical: 7 }}>
       <Text style={{ fontSize: 13, fontWeight: '600' }}>{new Date(copy.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Text>
       <Text style={{ fontSize: 12, color: colors.secondary }}>{copy.reason === 'before-restore' ? 'Before restore' : copy.reason === 'manual' ? 'Manual copy' : 'Automatic copy'} · {Math.max(1, Math.ceil(copy.bytes / 1024))} KB</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 20 }}><TextButton label="Recover" accessibilityLabel={`Review recovery ${copy.id}`} disabled={app.busy} onPress={() => { setPending(undefined); void app.run(async () => { if (recovery) setPending(await recovery.read(copy.id)); }); }} /><TextButton label="Export" accessibilityLabel={`Export recovery ${copy.id}`} disabled={app.busy} onPress={() => void app.run(async () => { if (recovery) await exportBackup((await recovery.read(copy.id)).json); })} /></View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 20 }}><TextButton label="Recover" accessibilityLabel={`Review recovery ${copy.id}`} disabled={app.busy} onPress={() => { setPending(undefined); void app.run(async () => { if (recovery) { const value = await recovery.read(copy.id); parseArchive(value.json); setPending(value); } }); }} /><TextButton label="Export" accessibilityLabel={`Export recovery ${copy.id}`} disabled={app.busy} onPress={() => void app.run(async () => { if (recovery) await exportBackup((await recovery.read(copy.id)).json); })} /></View>
     </View>)}
     {pending && <View testID="recovery-confirm" style={{ paddingVertical: 10, gap: 8 }}>
       <Text style={{ fontSize: 15, fontWeight: '600' }}>Recover missing records?</Text>

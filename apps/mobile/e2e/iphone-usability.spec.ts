@@ -50,9 +50,9 @@ test('choosing an invalid or cancelled replacement cannot leave an older restore
   await expect(page.getByText('This backup has an invalid record list. Choose another file.', { exact: true }).filter({ visible: true })).toBeVisible(); await expect(page.getByRole('button', { name: 'Confirm restore', exact: true })).toHaveCount(0);
   await choose(page, 'second-fixture.json', JSON.stringify(fixture())); await expect(page.getByTestId('backup-filename')).toHaveText('second-fixture.json');
   await choose(page, 'cancelled.json'); await expect(page.getByRole('button', { name: 'Confirm restore', exact: true })).toHaveCount(0);
-  await choose(page, 'invalid-record-fixture.json', JSON.stringify({ ...fixture(), foods: [{}] })); await page.getByRole('button', { name: 'Confirm restore', exact: true }).click();
+  await choose(page, 'invalid-record-fixture.json', JSON.stringify({ ...fixture(), foods: [{}] }));
   await expect(page.getByText('This backup contains invalid records. Your current diary is unchanged.', { exact: true }).filter({ visible: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel restore', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Confirm restore', exact: true })).toHaveCount(0);
   const after = await exported(page); expect(after.logs).toEqual(before.logs); expect(after.draft).toEqual(before.draft);
 });
 

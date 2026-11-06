@@ -67,6 +67,7 @@ jobs:
             verification/label-scanning
             verification/label-capture
             verification/log-destinations
+            verification/backup-upgrades
             verification/offline-interruptions
             verification/accessibility-finish
             verification/logging-craft

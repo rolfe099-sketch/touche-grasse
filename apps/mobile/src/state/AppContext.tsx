@@ -15,6 +15,7 @@ import { LabelForm } from '../domain/nutritionLabel';
 import { MealEdit } from '../domain/mealEditor';
 import { WeightDraft } from '../domain/weight';
 import { VoiceDraft } from '../domain/quickEntry';
+import { parseArchive } from '../domain/archive';
 
 type State = { repo: Repository; revision: number; draft: Draft; setDraft: (draft: Draft) => void;
   run: (action: () => Promise<unknown>, success?: string, syncDraft?: boolean) => Promise<boolean>;
@@ -103,6 +104,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     recovery, recoveryRevision, recoveryError, saveRecovery,
     async restoreBackup(json, recoverMissing = false) {
+      parseArchive(json);
       // Recovery is best effort: a backup-storage error must not remove the
       // existing validated merge-restore workflow or erase the active diary.
       if (recovery) { try { await saveRecovery('before-restore'); } catch { /* The Settings recovery status explains the failure. */ } }

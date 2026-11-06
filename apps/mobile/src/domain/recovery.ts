@@ -13,6 +13,7 @@ function checksum(value: string) { let hash = 2166136261; for (let i = 0; i < va
 export function inspectRecoveryJSON(json: string) {
   if (json.length > 50000000 || byteLength(json) > 50000000) throw new Error('This recovery copy exceeds 50 MB.');
   let value; try { value = JSON.parse(json); } catch { throw new Error('This recovery copy is unreadable. Other copies are kept.'); }
+  if (value?.format === 'touche-grasse' && typeof value.version === 'number' && value.version > 2) throw new Error('This backup needs a newer app. Update Touche Grasse before restoring. Your current diary is unchanged.');
   if (value?.format !== 'touche-grasse' || value.version !== 2 || !Array.isArray(value.logs) || !Array.isArray(value.foods) || !Array.isArray(value.recipes) || !value.draft) throw new Error('This is not a Touche Grasse recovery copy.');
   const record = (input: unknown) => input !== null && typeof input === 'object' && !Array.isArray(input);
   for (const key of ['weighIns', 'mealCorrections', 'shortcuts', 'dayReviews', 'preparedBatches', 'targets']) if (value[key] !== undefined && !Array.isArray(value[key])) throw new Error('This backup has an invalid record list. Choose another file.');

@@ -35,7 +35,9 @@ export const snapshotSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('food'), ingredient: ingredientSchema }),
   z.object({ kind: z.literal('recipe'), recipe: recipeSchema, quantity: decimalSchema, unit: z.enum(['servings', 'g']) }),
 ]);
-export const logValueSchema = z.object({ recordedAt: z.iso.datetime(), timePrecision: z.literal('day').optional(), meal: z.enum(meals), snapshot: snapshotSchema, nutrition: nutritionSchema, batchRecipe: recipeSchema.optional() });
+// Older correction trails sometimes stored the complete entry. Retain their
+// known identity fields instead of silently stripping them during an upgrade.
+export const logValueSchema = z.object({ id: z.string().optional(), batchId: z.string().optional(), preparedBatchId: z.string().min(1).optional(), recordedAt: z.iso.datetime(), timePrecision: z.literal('day').optional(), meal: z.enum(meals), snapshot: snapshotSchema, nutrition: nutritionSchema, batchRecipe: recipeSchema.optional() });
 export const logSchema = logValueSchema.extend({ id: z.string(), batchId: z.string(), preparedBatchId: z.string().min(1).optional(), corrections: z.array(z.object({ correctedAt: z.iso.datetime(), previous: logValueSchema })).max(200).optional() });
 export const profileSchema = z.object({ firstUsedAt: z.iso.datetime() });
 export const recipeDraftSchema = z.object({ recipe: recipeSchema.extend({ name: z.string().max(300), ingredients: z.array(ingredientSchema.extend({ quantity: z.string().max(100) })).max(200), servings: z.string().max(100), cookedWeightGrams: z.string().max(100).nullable() }), instructions: z.string().max(500000), splitPlan: splitPlanSchema.optional() });

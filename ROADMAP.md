@@ -16,10 +16,12 @@ The focus is fast, trustworthy logging. This list reflects implemented work and 
 
 - Interrupted automatic speech remains an explicit-resume draft when leaving or backgrounding before submission. Offline barcode attempts no longer impose a reconnection lockout; provider HTTP limits remain enforced. See [offline and interruption recovery](docs/OFFLINE_AND_INTERRUPTION_RECOVERY.md).
 
+- Complete restore validation before confirmation, rejection of unsupported fields/record types, failed-startup handle cleanup and legacy correction/snapshot compatibility. See [backup and upgrade safety](docs/BACKUP_AND_UPGRADE_SAFETY.md); full physical iPhone restoration remains pending.
+
 ## Next priorities
 
-1. **Data portability and upgrades:** keep legacy snapshots and unfinished drafts intact through schema upgrades, rejected imports and recovery. Creating/exporting recovery copies and Files review work on the owner's iPhone; full native restoration remains a separate pending check.
-2. **Coverage from real failures:** improve Norwegian product/alias coverage using observed missed queries and readable package evidence. Preserve sources, missing-nutrient states and raw/cooked distinctions.
+1. **Coverage from real failures:** improve Norwegian product/alias coverage using observed missed queries and readable package evidence. Preserve sources, missing-nutrient states and raw/cooked distinctions.
+2. **Physical restoration acceptance:** complete a controlled native restore with an exported recovery copy. Creation, Files export and review counts are owner-confirmed; desktop upgrade and rollback tests do not establish iOS Files restoration.
 3. **Physical interruption acceptance:** verify incoming calls, camera release, permission denial/recovery and airplane-mode reconnect on the owner's iPhone. Browser/native-port contracts and observed software failures are covered; actual OS transitions remain pending.
 4. **Physical accessibility acceptance:** check actual iPhone VoiceOver reading/focus order, Dynamic Type, numeric Done and keyboard avoidance against the browser-verified layouts. Do not infer these results from automation.
 5. **Release preparation when requested:** standalone signing, installation/update instructions and store preparation follow a nearly finished app and completed device validation. Standalone builds are currently postponed.

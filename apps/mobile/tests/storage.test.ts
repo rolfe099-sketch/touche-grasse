@@ -34,6 +34,41 @@ const draftFor = () => ({ ...emptyDraft(randomUUID), lines: [{ id: randomUUID(),
 
 for (const platform of ['IndexedDB', 'SQLite'] as const) describe(`${platform} real adapter / shared repository`, () => {
   async function adapter() { return platform === 'IndexedDB' ? openBrowserStorage(randomUUID()) : openSQLStorage(driver(new DatabaseSync(':memory:'))); }
+  it('refuses unrecognized backup fields instead of silently discarding newer data', async () => {
+    const repo = await setup(await adapter()); await repo.logDraft(draftFor()); const original = await repo.exportJSON();
+    for (const location of ['archive', 'food', 'snapshot', 'draft', 'preferences']) {
+      const backup = JSON.parse(original);
+      const target = location === 'archive' ? backup : location === 'food' ? backup.foods[0] : location === 'snapshot' ? backup.logs[0].snapshot : location === 'draft' ? backup.draft : backup.quickEntry;
+      target.newerAppData = { measured: 'keep this' };
+      expect(() => repo.restoreJSON(JSON.stringify(backup))).toThrow('newer');
+      expect(await repo.exportJSON()).toBe(original);
+    }
+    await repo.close();
+  });
+  it('rejects unsupported or mismatched stored records before writing, and closes the failed repository', async () => {
+    for (const record of [
+      { key: 'futureEvent:one', kind: 'futureEvent', id: 'one', value: {} },
+      { key: 'draft:active', kind: 'draft', id: 'active', value: { ...emptyDraft(randomUUID), newerAppData: 'retain' } },
+      { key: 'food:wrong', kind: 'food', id: 'wrong', value: oil },
+    ]) {
+      const storage = await adapter(); await storage.commit([{ type: 'put', record } as import('../src/storage/contract').Change], 0);
+      const before = await storage.load(); let closed = 0, writes = 0;
+      const repo = new Repository({ ...storage, close: async () => { closed++; }, commit: async (changes, revision) => { writes++; return storage.commit(changes, revision); } }, randomUUID);
+      await expect(repo.initialize(catalog, async () => undefined)).rejects.toThrow();
+      expect(closed).toBe(1); expect(writes).toBe(0); expect(await storage.load()).toEqual(before); await storage.close();
+    }
+  });
+  it('validates saved portion capacity before creating first-use metadata on startup', async () => {
+    const storage = await adapter(), source = await setup(storage);
+    const batch = await source.createBatchFromDraft(draftFor(), 'Six portions', '6', null); await source.logPreparedBatch(batch.id);
+    const invalid = structuredClone(source.logs[0]); if (invalid.snapshot.kind === 'recipe') invalid.snapshot.quantity = '7';
+    const revision = (await storage.load()).revision;
+    await storage.commit([{ type: 'delete', key: 'profile:identity' }, put('log', invalid.id, invalid)], revision);
+    const before = await storage.load(); let closed = 0;
+    const reopened = new Repository({ ...storage, close: async () => { closed++; } }, randomUUID);
+    await expect(reopened.initialize(catalog, async () => undefined)).rejects.toThrow('exceeds');
+    expect(closed).toBe(1); expect(await storage.load()).toEqual(before); await storage.close();
+  });
   it('moves every selected diary ingredient together, retains exact snapshots and restores both days with persistent Undo', async () => {
     const storage = await adapter(), repo = await setup(storage), sourceAt = new Date(2026, 9, 5, 8, 45), targetAt = new Date(2026, 9, 4, 12);
     const draft = draftFor(); for (let i = 0; i < 4; i++) draft.lines.push({ ...draft.lines[0], id: randomUUID(), quantityText: String(11 + i) });

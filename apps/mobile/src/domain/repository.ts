@@ -1,8 +1,10 @@
+import { parseArchive, utf8Size, validateEditableDrafts } from './archive';
+import { assertSupportedFields } from './compatibility';
 import { LoggingDestination } from './loggingDestination';
 import { loggingTime } from './calendarDay';
 import { z } from 'zod';
-import { Change, put, StorageAdapter } from '../storage/contract';
-import { D, dayKey, Draft, draftSchema, duplicateRecipe, emptyDraft, Food, foodSchema, foodNutrition, IdFactory, lineIngredient, LogEntry, logSchema, Meal, Recipe, recipePortion, recipeSchema, recipeTotal, snapshotNutrition, structuredCopy, validateFood, nutrients, profileSchema, recipeDraftSchema, Unit, PreparedBatch, preparedBatchSchema } from './model';
+import { Change, put, StorageAdapter, validateStoredIdentity } from '../storage/contract';
+import { dayKey, Draft, draftSchema, duplicateRecipe, emptyDraft, Food, foodSchema, foodNutrition, IdFactory, lineIngredient, LogEntry, logSchema, Meal, Recipe, recipePortion, recipeSchema, recipeTotal, snapshotNutrition, structuredCopy, validateFood, profileSchema, recipeDraftSchema, Unit, PreparedBatch, preparedBatchSchema } from './model';
 import { assertBatchCapacity, validateBatch, portionFits } from './portions';
 import { FoodIndex, normalize } from './search';
 import { emptyPreferences, liveTextIsCurrent, quickEntrySchema, QuickEntryPreferences, VoiceDraft, voiceDraftSchema } from './quickEntry';
@@ -15,11 +17,8 @@ import { MealEdit, mealEditSchema, makeMealEdit, MealCorrection, mealCorrectionS
 import { WeighIn, weighInSchema, validateWeighIn, WeightUnit, weightKg, WeightDraft, weightDraftSchema } from './weight';
 import { localDate } from './history';
 
-const archiveSchema = z.object({ format: z.literal('touche-grasse'), version: z.literal(2), foods: z.array(foodSchema).max(20000), logs: z.array(logSchema).max(100000), recipes: z.array(recipeSchema).max(10000), draft: draftSchema, profile: profileSchema.optional(), recipeDrafts: z.record(z.string(), recipeDraftSchema).optional(), quickEntry: quickEntrySchema.optional(), preparedBatches: z.array(preparedBatchSchema).max(20000).optional(), targets: z.array(targetChangeSchema).max(20000).optional(), shortcuts: z.array(mealShortcutSchema).max(1000).optional(), dayReviews: z.array(dayReviewSchema).max(100000).optional(), mealCorrections: z.array(mealCorrectionSchema).max(20000).optional(), weighIns: z.array(weighInSchema).max(100000).optional() });
-function utf8Size(value: string) {
-  let bytes = 0;
-  for (const char of value) { const point = char.codePointAt(0)!; bytes += point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4; }
-  return bytes;
+function readStored<T>(schema: z.ZodType<T>, input: unknown): T {
+  const value = schema.parse(input); assertSupportedFields(input, value, 'diary'); return value;
 }
 export class Repository {
   readonly index = new FoodIndex();
@@ -49,6 +48,10 @@ export class Repository {
   private queue: Promise<unknown> = Promise.resolve();
   constructor(private storage: StorageAdapter, readonly id: IdFactory) { this.draft = emptyDraft(id); }
   async initialize(catalog: Food[], yieldToUI = () => new Promise<void>(resolve => setTimeout(resolve, 0))) {
+    try { await this.initializeRecords(catalog, yieldToUI); }
+    catch (error) { try { await this.storage.close(); } catch { /* Preserve the validation/upgrade error. */ } throw error; }
+  }
+  private async initializeRecords(catalog: Food[], yieldToUI: () => Promise<void>) {
     this.catalogFoods = new Map(catalog.map(food => [food.id, food]));
     for (let i = 0; i < catalog.length; i += 100) {
       catalog.slice(i, i + 100).forEach(f => this.index.add(f));
@@ -56,29 +59,32 @@ export class Repository {
     }
     const loaded = await this.storage.load();
     this.revision = loaded.revision;
+    loaded.records.forEach(validateStoredIdentity);
+    if (new Set(loaded.records.map(record => record.key)).size !== loaded.records.length) throw new Error('Saved data contains duplicate identities. No records were changed.');
     for (const record of loaded.records) {
-      if (record.kind === 'food') this.foods.push(validateFood(foodSchema.parse(record.value)));
-      else if (record.kind === 'log') this.logs.push(logSchema.parse(record.value));
-      else if (record.kind === 'recipe') this.recipes.push(recipeSchema.parse(record.value));
-      else if (record.kind === 'draft') this.draft = draftSchema.parse(record.value);
-      else if (record.kind === 'undo') this.undo = z.array(z.string()).parse(record.value);
-      else if (record.kind === 'deletionUndo') this.deletionUndo = z.array(logSchema).parse(record.value);
-      else if (record.kind === 'profile') this.profile = profileSchema.parse(record.value);
-      else if (record.kind === 'recipeDraft') this.recipeDrafts[record.id] = recipeDraftSchema.parse(record.value);
-      else if (record.kind === 'preparedBatch') this.preparedBatches.push(validateBatch(record.value as PreparedBatch));
-      else if (record.kind === 'quickEntry') this.quickEntry = quickEntrySchema.parse(record.value);
-      else if (record.kind === 'targetChange') this.targets.push(targetChangeSchema.parse(record.value));
-      else if (record.kind === 'mealShortcut') this.shortcuts.push(validateShortcut(record.value));
-      else if (record.kind === 'mealCorrection') { const correction = mealCorrectionSchema.parse(record.value); [...correction.previous, ...correction.applied].forEach(validateLogCalculation); this.mealCorrections.push(correction); }
-      else if (record.kind === 'correctionUndo') this.correctionUndo = z.string().nullable().parse(record.value);
-      else if (record.kind === 'weighIn') this.weighIns.push(validateWeighIn(record.value));
-      else if (record.kind === 'dayReview') this.dayReviews.push(dayReviewSchema.parse(record.value));
+      if (record.kind === 'food') this.foods.push(validateFood(readStored(foodSchema, record.value)));
+      else if (record.kind === 'log') this.logs.push(readStored(logSchema, record.value));
+      else if (record.kind === 'recipe') this.recipes.push(readStored(recipeSchema, record.value));
+      else if (record.kind === 'draft') this.draft = readStored(draftSchema, record.value);
+      else if (record.kind === 'undo') this.undo = readStored(z.array(z.string()), record.value);
+      else if (record.kind === 'deletionUndo') this.deletionUndo = readStored(z.array(logSchema), record.value);
+      else if (record.kind === 'profile') this.profile = readStored(profileSchema, record.value);
+      else if (record.kind === 'recipeDraft') this.recipeDrafts[record.id] = readStored(recipeDraftSchema, record.value);
+      else if (record.kind === 'preparedBatch') this.preparedBatches.push(validateBatch(readStored(preparedBatchSchema, record.value)));
+      else if (record.kind === 'quickEntry') this.quickEntry = readStored(quickEntrySchema, record.value);
+      else if (record.kind === 'targetChange') this.targets.push(readStored(targetChangeSchema, record.value));
+      else if (record.kind === 'mealShortcut') this.shortcuts.push(validateShortcut(readStored(mealShortcutSchema, record.value)));
+      else if (record.kind === 'mealCorrection') { const correction = readStored(mealCorrectionSchema, record.value); [...correction.previous, ...correction.applied].forEach(validateLogCalculation); this.mealCorrections.push(correction); }
+      else if (record.kind === 'correctionUndo') this.correctionUndo = readStored(z.string().nullable(), record.value);
+      else if (record.kind === 'weighIn') this.weighIns.push(validateWeighIn(readStored(weighInSchema, record.value)));
+      else if (record.kind === 'dayReview') this.dayReviews.push(readStored(dayReviewSchema, record.value));
     }
     if (!this.draft.text && !this.draft.lines.length && !this.draft.recipeName && !this.draft.splitPlan && !this.draft.loggingDate && this.quickEntry.lastMeal) this.draft.meal = this.quickEntry.lastMeal;
     const earliest = [this.profile.firstUsedAt, ...this.logs.flatMap(log => [log.recordedAt, ...(log.corrections ?? []).map(c => c.previous.recordedAt)])].sort()[0];
-    if (!loaded.records.some(record => record.kind === 'profile') || earliest !== this.profile.firstUsedAt) await this.commit([put('profile', 'identity', { firstUsedAt: earliest })]);
+    validateEditableDrafts(this.draft, this.recipeDrafts, 'diary');
     assertBatchCapacity(this.preparedBatches, this.logs);
     this.sortAndIndex();
+    if (!loaded.records.some(record => record.kind === 'profile') || earliest !== this.profile.firstUsedAt) await this.commit([put('profile', 'identity', { firstUsedAt: earliest })]);
   }
   private sortAndIndex() {
     this.logs.sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
@@ -631,22 +637,9 @@ export class Repository {
     return json;
   }
   restoreJSON(json: string, options: { recoverMissing?: boolean } = {}) {
-    if (json.length > 50_000_000 || utf8Size(json) > 50_000_000) throw new Error('This backup is too large.');
-    const backup = archiveSchema.parse(JSON.parse(json));
-    (backup.preparedBatches ?? []).forEach(validateBatch);
-    (backup.shortcuts ?? []).forEach(validateShortcut);
-    (backup.weighIns ?? []).forEach(validateWeighIn);
-    (backup.mealCorrections ?? []).forEach(item => [...item.previous, ...item.applied].forEach(validateLogCalculation));
-    (backup.dayReviews ?? []).forEach(review => localDate(review.id));
-    backup.foods.forEach(validateFood); backup.recipes.forEach(recipeTotal);
-    backup.logs.flatMap(log => [log, ...(log.corrections ?? []).map(c => c.previous)]).forEach(log => {
-      const computed = snapshotNutrition(log.snapshot);
-      for (const key of nutrients) {
-        const a = computed[key], b = log.nutrition[key];
-        if ((a == null) !== (b == null) || (a != null && b != null && !new D(a).eq(b))) throw new Error('The backup contains an invalid nutrition calculation.');
-      }
-    });
-    for (const items of [backup.foods, backup.logs, backup.recipes, backup.preparedBatches ?? [], backup.targets ?? [], backup.shortcuts ?? [], backup.dayReviews ?? [], backup.mealCorrections ?? [], backup.weighIns ?? []]) if (new Set(items.map(i => i.id)).size !== items.length) throw new Error('The backup contains duplicate identities.');
+    // Validate inventory against the combined records inside the serialized
+    // merge, preserving the existing asynchronous conflict/failure contract.
+    const backup = parseArchive(json, { checkInventory: false });
     return this.serialized(async () => {
       const merge = <T extends { id: string }>(a: T[], b: T[]) => [...new Map([...a, ...b].map(value => [value.id, value])).values()];
       const foods = options.recoverMissing ? merge(backup.foods, this.foods) : merge(this.foods, backup.foods); this.checkBarcodes(foods);
