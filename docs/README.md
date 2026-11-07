@@ -22,6 +22,8 @@ These guides include dated implementation evidence. A past successful fixture or
 
 ## Build, test and release
 
+- [App Store submission sheet](APP_STORE_SUBMISSION_SHEET.md): copy-ready listing text, questionnaire guidance and owner-only fields.
+
 - [Design language](DESIGN.md): current Expo foundations and component sources.
 
 - [Development](DEVELOPMENT.md): setup, source layout and validation.

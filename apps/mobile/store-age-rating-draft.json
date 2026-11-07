@@ -2,7 +2,7 @@
   "status": "Draft only: complete in App Store Connect; current EAS schema rejects Apple-required socialMedia field",
   "proposedAnswers": {
     "ageRatingOverride": "NONE",
-    "alcoholTobaccoOrDrugUseOrReferences": "NONE",
+    "alcoholTobaccoOrDrugUseOrReferences": "INFREQUENT_OR_MILD",
     "contests": "NONE",
     "gambling": false,
     "gamblingSimulated": "NONE",
@@ -29,5 +29,10 @@
     "parentalControls": false,
     "userGeneratedContent": false,
     "socialMedia": false
-  }
+  },
+  "notes": [
+    "Health/wellness is present.",
+    "Bundled catalog contains alcoholic beverages; infrequent references are a more accurate proposal than None.",
+    "No numeric rating is asserted; complete the current Apple questionnaire."
+  ]
 }
